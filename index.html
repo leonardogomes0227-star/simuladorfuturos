@@ -103,6 +103,10 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
 .qfoot{margin:0;font-size:12px;color:var(--muted)}
 @media (max-width:960px){.grid{grid-template-columns:minmax(0,1fr)}.two{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:600px){canvas#chart{height:300px}.big{font-size:24px}}
+.adv-only{display:block}
+body.simple .adv-only{display:none}
+body.simple .col:empty{display:none}
+.mode-hint{margin:0;font-size:12px;color:var(--muted)}
 </style>
 
 <div class="wrap">
@@ -113,18 +117,23 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
   </header>
 
   <div class="bar">
+    <div class="seg" role="group" aria-label="Nível de detalhe">
+      <button id="modeSimple" class="on" type="button">Iniciante</button>
+      <button id="modeAdv" type="button">Avançado</button>
+    </div>
     <div class="seg" role="group" aria-label="Fonte dos dados">
       <button id="srcDemo" class="on" type="button">Dados simulados</button>
       <button id="srcCsv" type="button">Importar CSV</button>
     </div>
     <label class="sel" id="symWrap"><span>Ativo</span>
       <select id="sym"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option></select></label>
-    <label class="sel"><span>Velas visíveis</span>
+    <label class="sel adv-only"><span>Velas visíveis</span>
       <select id="viewN"><option value="60">60</option><option value="110" selected>110</option><option value="200">200</option></select></label>
     <button id="adv" class="btn" type="button">Avançar 1 vela</button>
     <button id="auto" class="btn" type="button" aria-pressed="false">Reproduzir</button>
     <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" hidden>
   </div>
+  <p id="modeHint" class="mode-hint"></p>
   <p id="srcNote" class="note"></p>
   <p id="msg" class="msg" role="status" aria-live="polite"></p>
 
@@ -134,7 +143,7 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
     <div class="col">
       <section class="card chartbox" aria-label="Gráfico">
         <canvas id="chart" role="img" aria-label="Gráfico de velas com médias móveis, volume e níveis do sinal"></canvas>
-        <div class="legend">
+        <div class="legend adv-only">
           <span><i style="background:var(--ema9)"></i>Média 9</span>
           <span><i style="background:var(--ema21)"></i>Média 21</span>
           <span><i style="background:var(--ema50)"></i>Média 50</span>
@@ -151,7 +160,7 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
         <div><button id="reset" class="btn danger" type="button">Zerar simulação</button></div>
       </section>
 
-      <section class="card">
+      <section class="card adv-only">
         <h2>Teste da estratégia (backtest)</h2>
         <p class="note" id="btNote"></p>
         <div class="stats" id="btStats"></div>
@@ -160,7 +169,7 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
     </div>
 
     <div class="col">
-      <section class="card">
+      <section class="card adv-only">
         <h2>Leitura do mercado</h2>
         <div id="reading"></div>
       </section>
@@ -170,7 +179,7 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
         <div id="signal"></div>
       </section>
 
-      <section class="card">
+      <section class="card adv-only">
         <h2>Risco e tamanho da posição</h2>
         <div class="fields">
           <label>Capital inicial (USDT)<input id="capital" type="number" min="10" step="10"></label>
@@ -184,7 +193,7 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
     </div>
   </main>
 
-  <details class="card">
+  <details class="card adv-only">
     <summary>Como o sinal é calculado</summary>
     <ul>
       <li>Tendência (2 pontos): médias exponenciais de 9, 21 e 50 velas alinhadas e preço do lado certo da média de 21.</li>
@@ -678,5 +687,21 @@ function bind(){
 load();
 $('sym').value=S.sym;
 buildDemo();refresh();bind();renderAll();
+})();
+
+(function(){
+  var KEY='radar-modo';
+  function get(){try{return localStorage.getItem(KEY)}catch(e){return null}}
+  function set(v){try{localStorage.setItem(KEY,v)}catch(e){}}
+  var bs=document.getElementById('modeSimple'),ba=document.getElementById('modeAdv'),hint=document.getElementById('modeHint');
+  function apply(simple){
+    document.body.classList.toggle('simple',simple);
+    bs.classList.toggle('on',simple);ba.classList.toggle('on',!simple);
+    hint.textContent=simple?'Modo iniciante: veja o gráfico, o sinal e treine abrindo operações simuladas. Use "Avançado" para ver risco, backtest e detalhes.':'';
+    window.dispatchEvent(new Event('resize'));
+  }
+  bs.addEventListener('click',function(){set('simple');apply(true)});
+  ba.addEventListener('click',function(){set('adv');apply(false)});
+  apply(get()!=='adv');
 })();
 </script>
