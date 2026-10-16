@@ -107,6 +107,8 @@ details ul{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;g
 body.simple .adv-only{display:none}
 body.simple .col:empty{display:none}
 .mode-hint{margin:0;font-size:12px;color:var(--muted)}
+.acts{white-space:nowrap}
+.trade-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}
 </style>
 
 <div class="wrap">
@@ -497,10 +499,17 @@ function renderTrades(){
     open.map(function(t){
       var here=t.sym===S.sym,u=(c.c-t.entry)*t.qty*(t.side==='long'?1:-1);
       return '<tr><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r">'+fmtPrice(t.stop)+'</td><td class="r">'+fmtPrice(t.target)+'</td>'+
-      '<td class="r '+(here?sgn(u):'')+'">'+(here?fmtSigned(u):'aguardando este ativo')+'</td><td class="r">'+(here?'<button class="btn" type="button" data-close="'+esc(t.id)+'">Encerrar</button>':'')+'</td></tr>';
+      '<td class="r '+(here?sgn(u):'')+'">'+(here?fmtSigned(u):'aguardando este ativo')+'</td><td class="r acts">'+(here?'<button class="btn" type="button" data-close="'+esc(t.id)+'" title="Fecha ao preço atual e registra o resultado">Encerrar</button> ':'')+'<button class="btn danger" type="button" data-cancel="'+esc(t.id)+'" title="Desfaz a operação como se nunca tivesse aberto, sem registrar resultado">Cancelar</button></td></tr>';
     }).join('')+'</tbody></table></div>';
   }
+  if(open.some(function(t){return t.sym===S.sym}))h+='<div class="trade-actions"><button id="closeAll" class="btn" type="button">Encerrar todas deste ativo</button><span class="note">Encerrar = fecha ao preço atual e registra o resultado. Cancelar = desfaz sem registrar nada.</span></div>';
   $('openWrap').innerHTML=h;
+  var ca=$('closeAll');if(ca)ca.addEventListener('click',function(){
+    S.trades.forEach(function(t){if(t.status==='open'&&t.sym===S.sym)closeTrade(t,last().c,'Manual')});save();renderAll();say('Operações encerradas ao preço atual.');});
+  Array.prototype.forEach.call($('openWrap').querySelectorAll('[data-cancel]'),function(b){var arm=null;b.addEventListener('click',function(){
+    if(!arm){b.textContent='Confirmar?';arm=setTimeout(function(){arm=null;b.textContent='Cancelar'},3000);return}
+    clearTimeout(arm);var id=b.getAttribute('data-cancel');
+    S.trades=S.trades.filter(function(x){return !(x.id===id&&x.status==='open')});save();renderAll();say('Operação cancelada. Nada foi registrado no diário.');});});
   Array.prototype.forEach.call($('openWrap').querySelectorAll('[data-close]'),function(b){b.addEventListener('click',function(){
     var t=S.trades.find(function(x){return x.id===b.getAttribute('data-close')});if(!t||t.status!=='open')return;
     closeTrade(t,last().c,'Manual');save();renderAll();});});
