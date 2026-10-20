@@ -22,7 +22,7 @@ function sizeForUser(u,t){
 
 // O sinal ainda vale? Compara o preço de agora com o preço do sinal, em múltiplos do risco (R).
 function entryStatus(t,price,now,tfMs){
-  var long=t.side==='long',dist=Math.abs(t.entry-t.stop);
+  var long=t.side==='long',dist=t.dist0>0?t.dist0:Math.abs(t.entry-t.stop);
   var out={state:'valid',driftR:0,rr:NaN,ageMs:now-t.openedAt,lo:0,hi:0};
   var sgn=long?1:-1;
   out.lo=long?t.entry+LATE_DOWN*dist:t.entry-LATE_UP*dist;
@@ -33,6 +33,7 @@ function entryStatus(t,price,now,tfMs){
   out.rr=risk>0?reward/risk:NaN;
   if(long?price<=t.stop:price>=t.stop){out.state='stopped';return out}
   if(long?price>=t.target:price<=t.target){out.state='target';return out}
+  if(t.moved||(t.mfe>0&&t.mfe>0.5*dist)){out.state='running';return out}
   if(out.ageMs>2*tfMs){out.state='old';return out}
   if(out.driftR>LATE_UP||out.driftR<LATE_DOWN)out.state='late';
   return out;

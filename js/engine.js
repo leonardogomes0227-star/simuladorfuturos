@@ -8,7 +8,11 @@
 
 var MMR=0.5; // margem de manutenção aproximada, em %, usada na liquidação
 
-var DEFAULTS={emaF:9,emaM:21,emaS:50,adxMin:20,minScore:4,stopAtr:1.5,rr:2};
+// Recursos novos ficam desligados (0) por padrão, então a estratégia clássica continua igual:
+// trendP: EMA longa de tendência (só opera a favor dela); beR: leva o stop para a entrada após esse lucro em R;
+// trailAtr: stop que persegue o preço a essa distância em ATR; maxBars: sai por tempo; atrMinPct/atrMaxPct: filtro de volatilidade;
+// cooldown: velas de pausa depois de uma operação perdedora.
+var DEFAULTS={emaF:9,emaM:21,emaS:50,adxMin:20,minScore:4,stopAtr:1.5,rr:2,trendP:0,beR:0,trailAtr:0,maxBars:0,atrMinPct:0,atrMaxPct:0,cooldown:0};
 var PRESETS={
   padrao:{name:'Padrão',p:{emaF:9,emaM:21,emaS:50,adxMin:20,minScore:4,stopAtr:1.5,rr:2}},
   conservadora:{name:'Conservadora',p:{emaF:9,emaM:21,emaS:50,adxMin:25,minScore:5,stopAtr:1.5,rr:2}},
@@ -27,6 +31,13 @@ function normParams(p){
   o.minScore=Math.round(clamp(o.minScore,3,6));
   o.stopAtr=clamp(o.stopAtr,0.5,5);
   o.rr=clamp(o.rr,0.5,6);
+  o.trendP=o.trendP>0?Math.round(clamp(o.trendP,50,400)):0;
+  o.beR=o.beR>0?clamp(o.beR,0.3,3):0;
+  o.trailAtr=o.trailAtr>0?clamp(o.trailAtr,1,6):0;
+  o.maxBars=o.maxBars>0?Math.round(clamp(o.maxBars,4,500)):0;
+  o.atrMinPct=o.atrMinPct>0?clamp(o.atrMinPct,0.05,5):0;
+  o.atrMaxPct=o.atrMaxPct>0?clamp(Math.max(o.atrMaxPct,o.atrMinPct),0.1,20):0;
+  o.cooldown=o.cooldown>0?Math.round(clamp(o.cooldown,1,50)):0;
   return o;
 }
 
@@ -85,12 +96,13 @@ function computeIndicators(cs,params){
   var P=normParams(params);
   var cl=cs.map(function(x){return x.c}),vo=cs.map(function(x){return x.v}),n=cs.length,hh=nanArr(n),ll=nanArr(n);
   for(var i=20;i<n;i++){var h=-Infinity,l=Infinity;for(var j=i-20;j<i;j++){if(cs[j].h>h)h=cs[j].h;if(cs[j].l<l)l=cs[j].l;}hh[i]=h;ll[i]=l;}
-  return {ef:ema(cl,P.emaF),em:ema(cl,P.emaM),es:ema(cl,P.emaS),rsi:rsi(cl,14),atr:atr(cs,14),adx:adx(cs,14),vavg:sma(vo,20),hh20:hh,ll20:ll};
+  return {et:P.trendP>0?ema(cl,P.trendP):null,ef:ema(cl,P.emaF),em:ema(cl,P.emaM),es:ema(cl,P.emaS),rsi:rsi(cl,14),atr:atr(cs,14),adx:adx(cs,14),vavg:sma(vo,20),hh20:hh,ll20:ll};
 }
+function minBars(P){return Math.max(60,P.emaS+11,P.trendP>0?P.trendP+11:0)}
 function signalAt(cs,ind,i,params){
   var P=normParams(params);
   var out={dir:'wait',score:0,reasons:[],blockers:[],entry:null,stop:null,target:null,risk:null,rr:P.rr,atr:null,regime:'indefinido'};
-  if(i<Math.max(60,P.emaS+11)){out.blockers.push('Poucas velas para analisar');return out}
+  if(i<minBars(P)){out.blockers.push('Poucas velas para analisar');return out}
   var b=cs[i],c=b.c,ef=ind.ef[i],em=ind.em[i],es=ind.es[i],r=ind.rsi[i],a=ind.atr[i],ad=ind.adx[i],va=ind.vavg[i];
   if([ef,em,es,r,a,ad,va,ind.hh20[i]].some(function(x){return !isFinite(x)})){out.blockers.push('Indicadores ainda sem dados suficientes');return out}
   var up=ef>em&&em>es&&c>em,dn=ef<em&&em<es&&c<em,score=0;
@@ -111,6 +123,17 @@ function signalAt(cs,ind,i,params){
   if(score>=P.minScore){if(r>72)out.blockers.push('RSI esticado em '+r.toFixed(0)+', compra tardia')}
   else if(score<=-P.minScore){if(r<28)out.blockers.push('RSI esticado em '+r.toFixed(0)+', venda tardia')}
   else out.blockers.push('Tendência, força e volume sem alinhamento suficiente ('+score+' pontos de 6, mínimo '+P.minScore+')');
+  if(Math.abs(score)>=P.minScore){
+    if(P.trendP>0){
+      var et=ind.et[i];
+      if(!isFinite(et))out.blockers.push('Poucas velas para a tendência longa');
+      else if(score>0&&c<et)out.blockers.push('Compra contra a tendência longa (abaixo da média '+P.trendP+')');
+      else if(score<0&&c>et)out.blockers.push('Venda contra a tendência longa (acima da média '+P.trendP+')');
+    }
+    var ap=a/c*100;
+    if(P.atrMinPct>0&&ap<P.atrMinPct)out.blockers.push('Volatilidade baixa demais ('+ap.toFixed(2)+'%)');
+    if(P.atrMaxPct>0&&ap>P.atrMaxPct)out.blockers.push('Volatilidade alta demais ('+ap.toFixed(2)+'%)');
+  }
   if(!out.blockers.length){
     var long=score>=P.minScore,risk=P.stopAtr*a;
     out.dir=long?'long':'short';out.entry=c;out.risk=risk;
@@ -132,21 +155,39 @@ function sizing(bal,riskPct,entry,stop,lev,feePct){
     feesUSD:notional*feePct/100*2,marginOver:margin>Math.max(0,bal),
     nearLiq:distPct>=0.8*liqPct,stopBeyondLiq:distPct>=liqPct,dist:dist};
 }
-function backtest(cs,ind,feePct,params){
-  var P=normParams(params),trades=[],i=Math.max(60,P.emaS+11);
-  while(i<cs.length-1){
+// Uma vela de vida de uma operação aberta (a mesma regra no backtest e no robô).
+// Stop e alvo valem pela máxima e mínima da vela; se os dois caírem na mesma vela, vale o stop.
+// Depois, com a vela já encerrada, o stop pode subir (breakeven e trailing) para valer a partir da próxima.
+// t: {side, entry, stop, target, dist0, mfe, bars, moved}. Devolve {price, reason} ou null.
+function stepTrade(t,c,atrVal,P){
+  var long=t.side==='long';
+  t.bars=(t.bars||0)+1;
+  if(long?c.l<=t.stop:c.h>=t.stop)return {price:t.stop,reason:t.moved?'Stop móvel':'Stop'};
+  if(long?c.h>=t.target:c.l<=t.target)return {price:t.target,reason:'Alvo'};
+  var fav=long?c.h-t.entry:t.entry-c.l;
+  if(!(fav<=(t.mfe||0)))t.mfe=fav;
+  var d0=t.dist0||Math.abs(t.entry-t.stop);
+  if(P.beR>0&&t.mfe>=P.beR*d0&&(long?t.entry>t.stop:t.entry<t.stop)){t.stop=t.entry;t.moved=true}
+  if(P.trailAtr>0&&isFinite(atrVal)&&t.mfe>=(P.beR>0?P.beR:1)*d0){
+    var tr=long?c.h-P.trailAtr*atrVal:c.l+P.trailAtr*atrVal;
+    if(long?tr>t.stop:tr<t.stop){t.stop=tr;t.moved=true}
+  }
+  if(P.maxBars>0&&t.bars>=P.maxBars)return {price:c.c,reason:'Tempo'};
+  return null;
+}
+// from/to (opcionais) limitam o teste a um trecho da série; os indicadores continuam vindo da série inteira (são causais).
+function backtest(cs,ind,feePct,params,slipPct,from,to){
+  var P=normParams(params),trades=[],i=Math.max(minBars(P),from||0),end=to||cs.length,cost=2*((feePct||0)+(slipPct||0))/100;
+  while(i<end-1){
     var s=signalAt(cs,ind,i,P);
     if(s.dir==='wait'){i++;continue}
-    var long=s.dir==='long',risk=Math.abs(s.entry-s.stop),exitIdx=-1,R=0,why='',j;
-    for(j=i+1;j<cs.length;j++){
-      var bar=cs[j],hitS=long?bar.l<=s.stop:bar.h>=s.stop,hitT=long?bar.h>=s.target:bar.l<=s.target;
-      if(hitS){R=-1;why='stop';exitIdx=j;break}
-      if(hitT){R=P.rr;why='alvo';exitIdx=j;break}
-    }
-    if(exitIdx<0){var last=cs[cs.length-1].c;R=(long?last-s.entry:s.entry-last)/risk;why='fim dos dados';exitIdx=cs.length-1}
-    R-=2*feePct/100*s.entry/risk;
-    trades.push({i:i,j:exitIdx,dir:s.dir,R:R,why:why});
-    i=exitIdx+1;
+    var long=s.dir==='long',dist=Math.abs(s.entry-s.stop),exitIdx=-1,price=0,why='',j;
+    var t={side:s.dir,entry:s.entry,stop:s.stop,target:s.target,dist0:dist,mfe:0,bars:0,moved:false};
+    for(j=i+1;j<end;j++){var r=stepTrade(t,cs[j],ind.atr[j],P);if(r){exitIdx=j;price=r.price;why=r.reason;break}}
+    if(exitIdx<0){exitIdx=end-1;price=cs[exitIdx].c;why='fim dos dados'}
+    var R=(price-s.entry)*(long?1:-1)/dist-cost*s.entry/dist;
+    trades.push({i:i,j:exitIdx,dir:s.dir,R:R,why:why.toLowerCase()});
+    i=exitIdx+(R<0&&P.cooldown>0?P.cooldown:1);
   }
   var wins=0,gw=0,gl=0,cum=0,peak=0,dd=0,curve=[0];
   trades.forEach(function(t){if(t.R>0){wins++;gw+=t.R}else gl+=-t.R;cum+=t.R;curve.push(cum);if(cum>peak)peak=cum;if(peak-cum>dd)dd=peak-cum;});
@@ -200,5 +241,5 @@ function parseCSV(text){
 
 return {MMR:MMR,DEFAULTS:DEFAULTS,PRESETS:PRESETS,normParams:normParams,mulberry32:mulberry32,genCandles:genCandles,
   ema:ema,sma:sma,rsi:rsi,atr:atr,adx:adx,computeIndicators:computeIndicators,signalAt:signalAt,levels:levels,
-  sizing:sizing,backtest:backtest,resolveTrade:resolveTrade,parseCSV:parseCSV};
+  sizing:sizing,stepTrade:stepTrade,minBars:minBars,backtest:backtest,resolveTrade:resolveTrade,parseCSV:parseCSV};
 });

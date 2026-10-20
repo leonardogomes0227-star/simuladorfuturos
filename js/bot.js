@@ -22,6 +22,7 @@ function sanitizeTrade(t){
   if(![t.entry,t.stop,t.target,t.qty,t.openT,t.openedAt].every(isNum)||t.qty<=0||!D.validSymbol(t.sym))return null;
   if(t.status==='closed'&&![t.exit,t.pnl,t.closedAt].every(isNum))return null;
   var o={id:String(t.id||''),sym:t.sym,side:t.side,entry:t.entry,stop:t.stop,target:t.target,qty:t.qty,lev:isNum(t.lev)?t.lev:1,
+    dist0:isNum(t.dist0)&&t.dist0>0?t.dist0:Math.abs(t.entry-t.stop),mfe:isNum(t.mfe)?t.mfe:0,bars:isNum(t.bars)?t.bars:0,moved:!!t.moved,
     risk:isNum(t.risk)?t.risk:Math.abs(t.entry-t.stop)*t.qty,openedAt:t.openedAt,openT:t.openT,score:isNum(t.score)?t.score:0,
     reasons:Array.isArray(t.reasons)?t.reasons.map(String).slice(0,8):[],status:t.status};
   if(t.status==='closed'){o.exit=t.exit;o.pnl=t.pnl;o.closedAt=t.closedAt;o.reason=String(t.reason||'')}
@@ -63,6 +64,13 @@ function closeTrade(st,t,price,reason,at){
   t.exit=price;t.status='closed';t.reason=reason;t.closedAt=at;
   t.pnl=(price-t.entry)*t.qty*(long?1:-1)-(t.entry+price)*t.qty*fee;
 }
+// Pausa depois de uma operação perdedora no mesmo ativo (params.cooldown, em velas).
+function coolingDown(st,sym,candT,tfMs){
+  var n=st.params.cooldown;if(!(n>0))return false;
+  var lastT=-Infinity;
+  st.trades.forEach(function(t){if(t.status==='closed'&&t.sym===sym&&t.pnl<0&&t.closedAt-tfMs>lastT)lastT=t.closedAt-tfMs});
+  return candT-lastT<n*tfMs;
+}
 function nextId(st,sym,t){return sym+'-'+t+'-'+st.trades.length}
 
 // Processa as velas fechadas novas de cada ativo, em ordem cronológica.
@@ -85,18 +93,21 @@ function step(st,data,now){
     var c=ctx[ev.sym],cand=c.cs[ev.i],at=cand.t+tfMs,open=null;
     st.trades.forEach(function(t){if(t.status==='open'&&t.sym===ev.sym)open=t});
     if(open){
-      var long=open.side==='long',hitS=long?cand.l<=open.stop:cand.h>=open.stop,hitT=long?cand.h>=open.target:cand.l<=open.target;
-      if(hitS){closeTrade(st,open,long?open.stop*(1-slip):open.stop*(1+slip),'Stop',at);events.push({type:'close',trade:open})}
-      else if(hitT){closeTrade(st,open,open.target,'Alvo',at);events.push({type:'close',trade:open})}
+      var res=E.stepTrade(open,cand,c.ind.atr[ev.i],st.params);
+      if(res){
+        var lg=open.side==='long',px=res.price;
+        if(res.reason!=='Alvo')px=lg?px*(1-slip):px*(1+slip); // saída a mercado paga derrapagem; alvo é ordem limitada
+        closeTrade(st,open,px,res.reason,at);events.push({type:'close',trade:open});
+      }
     }else{
       var sig=E.signalAt(c.cs,c.ind,ev.i,st.params);
-      if(sig.dir!=='wait'&&openTrades(st).length<st.cfg.maxOpen&&dayPnl(st,at)>-st.cfg.dailyPct/100*st.cfg.capital){
+      if(sig.dir!=='wait'&&openTrades(st).length<st.cfg.maxOpen&&dayPnl(st,at)>-st.cfg.dailyPct/100*st.cfg.capital&&!coolingDown(st,ev.sym,cand.t,tfMs)){
         var bal=balance(st),long2=sig.dir==='long',entry=long2?sig.entry*(1+slip):sig.entry*(1-slip),dist=Math.abs(entry-sig.stop);
         var qty=dist>0?bal*st.cfg.riskPct/100/dist:0;
         qty=Math.min(qty,bal*st.cfg.lev/entry);
         if(qty>0&&bal>0){
           var t={id:nextId(st,ev.sym,cand.t),sym:ev.sym,side:sig.dir,entry:entry,stop:sig.stop,target:sig.target,qty:qty,lev:st.cfg.lev,risk:qty*dist,
-            openedAt:at,openT:cand.t,score:sig.score,reasons:sig.reasons.slice(0,8),status:'open'};
+            dist0:dist,mfe:0,bars:0,moved:false,openedAt:at,openT:cand.t,score:sig.score,reasons:sig.reasons.slice(0,8),status:'open'};
           st.trades.push(t);events.push({type:'open',trade:t});
         }
       }
