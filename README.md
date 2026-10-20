@@ -6,6 +6,9 @@ Site estático, sem build e sem dependências. Abra `index.html` por um servidor
 
 ## O que tem
 
+- **Hoje** (tela inicial): uma resposta só, em palavras (HÁ OPORTUNIDADE, ESPERAR, SÓ SIMULAR ou NÃO OPERAR HOJE). Mostra os sinais do robô com preço ao vivo, janela de entrada (se o preço já passou do ponto, manda não entrar), stop, alvo e **quanto comprar com o seu dinheiro** (em R$ ou USDT, arriscando 0,25% a 1% e com alavancagem máxima que você define). Tem limite de perda do dia e da semana e uma **trava de segurança**: enquanto o robô não passar no placar de prontidão, a tela diz SÓ SIMULAR.
+- **Avisos no Telegram** (opcional) quando o robô abre ou fecha uma operação (veja `robo/LEIA-ME.md`).
+
 - **Robô de simulação** (tela principal): opera sozinho no papel, vela fechada a vela fechada, em várias moedas, com a estratégia escolhida. Aplica taxa, derrapagem, limite diário e máximo de posições. Mostra saldo, curva, posições abertas com o motivo da entrada, histórico e um placar de "pronto para operar de verdade?". Roda enquanto a aba estiver aberta e, ao reabrir, **recupera o que perdeu** reprocessando o histórico da Binance (até 500 velas), com o mesmo resultado que teria em tempo real. Para rodar 24h sem aba aberta seria preciso um servidor.
 - **Robô 24h no servidor**: o workflow `.github/workflows/robo.yml` roda `server/run-bot.js` a cada ~5 minutos no GitHub Actions (grátis, com o computador desligado) e grava o estado na branch `robo-estado`; o site só lê. A configuração fica em `robo/config.json` (veja `robo/LEIA-ME.md`). É o mesmo `js/bot.js` do navegador, e o histórico se recupera sozinho se o GitHub atrasar uma rodada.
 - **Testar antes de ligar**: backtest de todas as estratégias nas moedas escolhidas.
@@ -36,6 +39,7 @@ Estrutura:
 | `js/data.js` | Cliente da Binance: REST, WebSocket, fallback (testado com `fetch` simulado) |
 | `js/bot.js` | Robô de simulação: passo a passo determinístico, recuperação, prontidão (puro, testado) |
 | `server/run-bot.js` | Uma checagem do robô no servidor (lê a config, busca velas, grava o estado) |
+| `js/hoje.js` | Veredito do dia, tamanho de posição e janela de entrada (puro, testado) |
 | `js/app.js` | Interface e estado |
 | `sw.js` | Cache offline. **Mude `VERSION` a cada publicação.** |
 

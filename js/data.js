@@ -71,6 +71,22 @@ function fetchKlines(sym,tf,limit,fetchImpl){
   }
   return next();
 }
+// Preço atual de vários pares de uma vez: {BTCUSDT: 81234.5, ...}
+function fetchPrices(symbols,fetchImpl){
+  fetchImpl=fetchImpl||fetch;
+  var list=symbols.filter(validSymbol);
+  if(!list.length)return Promise.resolve({});
+  var q='symbols='+encodeURIComponent(JSON.stringify(list)),i=0;
+  function next(err){
+    if(i>=HOSTS.length)return Promise.reject(err||new Error('Sem resposta'));
+    return fetchJson(HOSTS[i++]+'/api/v3/ticker/price?'+q,fetchImpl,8000).then(function(rows){
+      if(!Array.isArray(rows))throw new Error('Resposta inesperada');
+      var out={};rows.forEach(function(r){var p=r&&parseFloat(r.price);if(r&&validSymbol(r.symbol)&&p>0)out[r.symbol]=p});
+      return out;
+    }).catch(next);
+  }
+  return next();
+}
 function fetchSymbols(fetchImpl){
   fetchImpl=fetchImpl||fetch;
   var i=0;
@@ -87,5 +103,5 @@ function fetchSymbols(fetchImpl){
 }
 
 return {TFS:TFS,POPULAR:POPULAR,MAX_CANDLES:MAX_CANDLES,validSymbol:validSymbol,normSymbol:normSymbol,parseKlines:parseKlines,klineFromWs:klineFromWs,
-  applyKline:applyKline,wsUrl:wsUrl,klinesUrl:klinesUrl,fetchKlines:fetchKlines,fetchSymbols:fetchSymbols};
+  applyKline:applyKline,wsUrl:wsUrl,klinesUrl:klinesUrl,fetchKlines:fetchKlines,fetchPrices:fetchPrices,fetchSymbols:fetchSymbols};
 });

@@ -26,12 +26,36 @@
   </header>
 
   <nav class="tabs" aria-label="Telas">
-    <button id="tabBot" class="on" type="button">Robô</button>
+    <button id="tabHoje" class="on" type="button">Hoje</button>
+    <button id="tabBot" type="button">Robô</button>
     <button id="tabManual" type="button">Mesa manual (gráfico)</button>
   </nav>
   <p id="msg" class="msg" role="status" aria-live="polite"></p>
 
-  <div id="viewBot">
+  <div id="viewHoje">
+    <section class="card hj-verdict" id="hjVerdict" aria-live="polite"></section>
+    <section class="card" id="hjSignals"></section>
+    <section class="card" id="hjMy">
+      <h2>Meu dinheiro</h2>
+      <p class="note">Só no seu aparelho, não é enviado a lugar nenhum. Serve para calcular o tamanho de cada operação.</p>
+      <div class="fields">
+        <label>Quanto vou usar<input id="hjCapital" type="number" min="0" step="any" placeholder="Ex.: 1000" inputmode="decimal"></label>
+        <label>Moeda<select id="hjCur"><option value="BRL">R$ (reais)</option><option value="USDT">USDT</option></select></label>
+        <label>Risco por operação<select id="hjRisk"><option value="0.25">0,25%</option><option value="0.5">0,5% (ideal)</option><option value="1">1%</option></select></label>
+        <label>Alavancagem máxima<select id="hjLev"><option value="1">1x (nenhuma)</option><option value="2">2x</option><option value="3">3x</option></select></label>
+      </div>
+      <div id="hjLimits"></div>
+    </section>
+    <section class="card" id="hjRules"></section>
+    <details class="card" id="hjBot">
+      <summary><h2>Como o robô está indo</h2></summary>
+      <div class="stats" id="hjStats"></div>
+      <div id="hjGate"></div>
+      <p class="note">Detalhes, histórico e configuração na aba Robô.</p>
+    </details>
+  </div>
+
+  <div id="viewBot" hidden>
     <div class="modebar">
       <div class="seg" role="group" aria-label="Onde o robô roda">
         <button id="bmServer" class="on" type="button">Servidor 24h</button>
@@ -300,6 +324,7 @@
 <script src="js/config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/bot.js"></script>
+<script src="js/hoje.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

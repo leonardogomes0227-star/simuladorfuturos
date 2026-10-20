@@ -16,9 +16,20 @@ Edite `config.json` neste mesmo diretório (no GitHub: abra o arquivo, clique no
 | `limiteDiarioPct` | para de abrir novas no dia ao perder isso | 0,5 a 20 |
 | `taxaPorLadoPct` | taxa da corretora por lado | 0 a 0,5 |
 | `derrapagemPorLadoPct` | pior preço na execução, por lado | 0 a 1 |
+| `zerarHistorico` | opcional: **troque o texto** para começar uma conta nova (apaga operações e recomeça o placar de prontidão). O mesmo texto não zera de novo. Use ao mudar estratégia ou intervalo | qualquer texto, ex.: `"fase3"` |
 
 Regras de segurança:
 
 - Mudar `intervalo` ou `moedas` **encerra as posições abertas** ao último preço e recomeça a partir de agora.
 - `capital` só muda se o histórico estiver vazio.
 - Se o arquivo tiver erro, o servidor mantém a configuração anterior e mostra o erro no site.
+
+## Avisos no Telegram (opcional)
+
+O robô pode te avisar quando surgir um sinal novo ou quando uma operação fechar. Só avisa abertura se o sinal for recente (até 2 velas), para você não agir em cima de sinal velho.
+
+1. No Telegram, converse com o **@BotFather**, envie `/newbot` e guarde o **token** que ele devolver.
+2. Mande uma mensagem qualquer para o seu bot novo. Depois abra `https://api.telegram.org/bot<TOKEN>/getUpdates` e copie o número em `"chat":{"id":...}`.
+3. No GitHub: **Settings → Secrets and variables → Actions → New repository secret**. Crie `TELEGRAM_BOT_TOKEN` (o token) e `TELEGRAM_CHAT_ID` (o número).
+
+Enquanto o robô estiver em simulação, todo aviso vem marcado como **SIMULAÇÃO**. O GitHub pode atrasar as rodadas agendadas em algumas horas; por isso o aviso diz até onde o preço ainda vale a entrada.

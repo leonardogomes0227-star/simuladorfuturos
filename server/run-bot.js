@@ -7,12 +7,40 @@ const fs = require('fs');
 const path = require('path');
 const D = require('../js/data.js');
 const Bot = require('../js/bot.js');
+const H = require('../js/hoje.js');
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; }
 }
 
-async function run({ configPath, statePath, fetchImpl, now }) {
+function fmtPrice(p) {
+  const a = Math.abs(p), d = a >= 1000 ? 2 : (a >= 10 ? 3 : (a >= 1 ? 4 : (a >= 0.01 ? 5 : 8)));
+  return p.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+
+// Avisa no Telegram (opcional). Nunca derruba a rodada: erro vira meta.notify.error.
+// Abertura só é avisada se o sinal ainda é recente (2 velas); depois de uma pausa longa ele já não vale.
+async function notify(events, ready, tg, fetchImpl, now, tfMs) {
+  const out = { sent: 0, error: '' };
+  const fresh = events.filter((ev) => ev.type !== 'open' || now - ev.trade.openedAt <= 2 * tfMs);
+  if (!tg || !tg.token || !tg.chatId || !fresh.length) return out;
+  for (const ev of fresh.slice(0, 8)) {
+    try {
+      const res = await fetchImpl('https://api.telegram.org/bot' + tg.token + '/sendMessage', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: tg.chatId, text: H.alertText(ev, ready, fmtPrice) })
+      });
+      if (!res.ok) throw new Error('Telegram respondeu HTTP ' + res.status);
+      out.sent++;
+    } catch (e) {
+      out.error = String(e.message || e).replace(tg.token, '***');
+    }
+  }
+  return out;
+}
+
+async function run({ configPath, statePath, fetchImpl, now, telegram }) {
   now = now || Date.now();
   const file = readJson(statePath) || {};
   const st = Bot.sanitize(file.state);
@@ -38,7 +66,8 @@ async function run({ configPath, statePath, fetchImpl, now }) {
     let ok = 0;
     res.forEach((r) => { if (r) { data[r.sym] = r.cs; st.prices[r.sym] = r.cs[r.cs.length - 1].c; ok++; } });
     if (ok) {
-      Bot.step(st, data, now);
+      const events = Bot.step(st, data, now);
+      meta.notify = await notify(events, Bot.readiness(st, now).ready, telegram, fetchImpl, now, D.TFS[tf]);
       meta.lastOk = now;
       meta.net = ok < syms.length ? 'part' : 'ok';
     } else {
@@ -62,10 +91,12 @@ if (require.main === module) {
     console.error('Uso: node server/run-bot.js <config.json> <estado.json>');
     process.exit(2);
   }
-  run({ configPath, statePath, fetchImpl: fetch }).then(({ st, meta }) => {
+  const telegram = { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID };
+  run({ configPath, statePath, fetchImpl: fetch, telegram }).then(({ st, meta }) => {
     const open = Bot.openTrades(st).length, closed = Bot.closedTrades(st).length;
     console.log(`robô ${st.running ? 'ligado' : 'desligado'} · rede: ${meta.net || '-'} · ${closed} fechadas, ${open} abertas · saldo ${Bot.balance(st).toFixed(2)}`);
     if (meta.configError) console.log('ATENÇÃO configuração: ' + meta.configError);
     meta.errors.forEach((e) => console.log('ATENÇÃO dados: ' + e));
+    if (meta.notify && (meta.notify.sent || meta.notify.error)) console.log('Telegram: ' + meta.notify.sent + ' aviso(s) enviado(s)' + (meta.notify.error ? ' · ERRO: ' + meta.notify.error : ''));
   }).catch((e) => { console.error(e); process.exit(1); });
 }

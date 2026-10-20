@@ -19,7 +19,7 @@ var S={src:'demo',demoSym:'BTCUSDT',liveSym:'BTCUSDT',csvSym:'CSV',csvName:'',tf
   params:E.normParams(),presetId:'padrao',custom:{},
   live:{tok:0,ws:null,poll:null,retry:null,state:'off'},
   f:{sym:'',res:'',side:'',reason:'',tag:''},diaryN:25,
-  view:'bot',wantLive:false,resetArm:null,cancelArm:null,msgTimer:null,cmpCache:{},renderQueued:false,tickPending:false,installEvt:null};
+  view:'hoje',wantLive:false,resetArm:null,cancelArm:null,msgTimer:null,cmpCache:{},renderQueued:false,tickPending:false,installEvt:null};
 
 /* ---------- formatação ---------- */
 function fmtPrice(p){if(!isFinite(p))return '–';var a=Math.abs(p),d=a>=1000?2:(a>=10?3:(a>=1?4:(a>=0.01?5:8)));return p.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})}
@@ -925,9 +925,10 @@ function bind(){
   $('bkImport').addEventListener('click',function(){$('bkFile').click()});
   $('bkFile').addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];e.target.value='';if(f)importBackup(f)});
 
-  bindChart();bindBot();
+  bindChart();bindBot();bindHoje();
   $('bmServer').addEventListener('click',function(){setBotMode('server')});
   $('bmLocal').addEventListener('click',function(){setBotMode('local')});
+  $('tabHoje').addEventListener('click',function(){setView('hoje')});
   $('tabBot').addEventListener('click',function(){setView('bot')});
   $('tabManual').addEventListener('click',function(){setView('manual')});
   window.addEventListener('resize',drawChart);
@@ -1175,6 +1176,102 @@ function bindBot(){
 }
 
 
+/* ---------- tela Hoje ---------- */
+var Hoje=window.RadarHoje,HOJE_KEY='radar-hoje-v1',hj={capital:0,cur:'BRL',risk:0.5,lev:1,fx:0},hjPrices={},hjAt=0,hjTimer=null,hjBusy=false;
+function loadHoje(){try{var d=JSON.parse(localStorage.getItem(HOJE_KEY)||'{}');
+  if(isFinite(d.capital)&&d.capital>=0)hj.capital=d.capital;if(d.cur==='USDT'||d.cur==='BRL')hj.cur=d.cur;
+  if([0.25,0.5,1].indexOf(d.risk)>=0)hj.risk=d.risk;if([1,2,3].indexOf(d.lev)>=0)hj.lev=d.lev;if(d.fx>0)hj.fx=d.fx}catch(e){}}
+function saveHoje(){try{localStorage.setItem(HOJE_KEY,JSON.stringify(hj))}catch(e){}}
+function hjCapUSDT(){if(!(hj.capital>0))return 0;if(hj.cur==='USDT')return hj.capital;return hj.fx>0?hj.capital/hj.fx:0}
+function money(usdt){return hj.cur==='BRL'&&hj.fx>0?'R$ '+fmt2(usdt*hj.fx):fmt2(usdt)+' USDT'}
+function ago(ms){return fmtDur(Math.max(0,ms))}
+function refreshHoje(){
+  if(hjBusy)return;
+  var syms=R?Bot.openTrades(R.st).map(function(t){return t.sym}):[];
+  if(hj.cur==='BRL')syms.push('USDTBRL');
+  syms=syms.filter(function(x,i,a){return a.indexOf(x)===i});
+  if(!syms.length){renderHoje();return}
+  hjBusy=true;
+  D.fetchPrices(syms).then(function(p){
+    Object.keys(p).forEach(function(k){hjPrices[k]=p[k]});hjAt=Date.now();
+    if(p.USDTBRL>0){hj.fx=p.USDTBRL;saveHoje()}
+  }).catch(function(){}).then(function(){hjBusy=false;if(S.view==='hoje')renderHoje()});
+}
+function syncHojeTimer(){
+  clearInterval(hjTimer);hjTimer=null;
+  if(S.view==='hoje'){refreshHoje();hjTimer=setInterval(function(){if(!document.hidden)refreshHoje()},20000)}
+}
+var STATE_TXT={valid:['Dentro da janela de entrada','ok'],late:['Passou do ponto: não entre','warn'],old:['Sinal velho: ignore','warn'],stopped:['Stop atingido: ignore','bad'],target:['Alvo atingido: ignore','warn'],'sem-preco':['Sem preço agora','warn']};
+function renderHoje(){
+  var vEl=$('hjVerdict');
+  if(!R){
+    var c=rcfg(),msg=remoteErr==='404'?'O servidor ainda não gravou nada. Abra a aba Robô para ver como iniciar.':remoteErr==='net'?'Não consegui ler o estado do robô agora. Tento de novo em 1 minuto.':remoteErr==='config'?'Falta indicar o repositório em js/config.js.':'Carregando…';
+    vEl.className='card hj-verdict tone-warn';vEl.innerHTML='<div class="hjword warn">AGUARDE</div><p class="hjreason">'+esc(msg)+'</p>';
+    $('hjSignals').innerHTML='';renderHojeMy(null);renderHojeRules();$('hjStats').innerHTML='';$('hjGate').innerHTML='';return;
+  }
+  var now=Date.now(),u={capital:hjCapUSDT(),riskPct:hj.risk,maxLev:hj.lev},a=Hoje.advise(R.st,R.meta,hjPrices,u,now);
+  var cfg={oportunidade:['HÁ OPORTUNIDADE','go','tone-go'],esperar:['ESPERAR','wait',''],simular:['SÓ SIMULAR','warn','tone-warn'],parar:['NÃO OPERAR HOJE','stop','tone-stop'],desatualizado:['ESPERAR','warn','tone-warn']}[a.code];
+  var h='<div class="hjword '+cfg[1]+'">'+cfg[0]+'</div><p class="hjreason">'+esc(a.reason)+'</p>';
+  if(!a.ready){
+    h+='<div><div class="note">Trava de segurança: '+a.rd.passed+' de '+a.rd.checks.length+' critérios cumpridos</div><div class="gatebar" role="img" aria-label="Progresso da trava de segurança"><span style="width:'+(a.rd.passed/a.rd.checks.length*100).toFixed(0)+'%"></span></div></div>'+
+      '<ul class="list">'+a.rd.checks.filter(function(c){return !c.ok}).slice(0,3).map(function(c){return '<li>Falta: '+esc(c.label)+' ('+esc(c.detail)+')</li>'}).join('')+'</ul>';
+  }else h+='<p class="note">O robô cumpriu os critérios no simulado. Mesmo assim: resultado passado não garante o futuro, comece pequeno e mantenha a alavancagem baixa.</p>';
+  var lastRun=R.meta.lastRun||0;
+  h+='<p class="qfoot">Robô conferiu o mercado '+(lastRun?'há '+ago(now-lastRun):'ainda não')+(hjAt?' · preços atualizados há '+Math.max(0,Math.round((now-hjAt)/1000))+' s':'')+'. Tudo aqui é simulação: nenhuma ordem é enviada.</p>';
+  vEl.className='card hj-verdict '+cfg[2];vEl.innerHTML=h;
+
+  var sg='<h2>Sinais do robô</h2>';
+  if(!a.signals.length)sg+='<div class="empty">Nenhum sinal aberto agora. Quando o robô entrar numa operação, ela aparece aqui com tudo pronto.</div>';
+  a.signals.forEach(function(x){
+    var t=x.trade,long=t.side==='long',st=STATE_TXT[x.status.state]||STATE_TXT.valid,ok=x.status.state==='valid',sz=x.size,dist=Math.abs(t.entry-t.stop);
+    sg+='<div class="sigcard '+(ok?t.side:'ignore')+'"><div class="sigtop"><span class="sigtitle '+(long?'long':'short')+'">'+(long?'COMPRAR ':'VENDER ')+esc(t.sym)+'</span><span class="badge '+st[1]+'">'+st[0]+'</span><span class="note">sinal de há '+ago(now-t.openedAt)+'</span></div>'+
+      '<dl class="kv"><dt>Preço agora</dt><dd class="num">'+(x.price?fmtPrice(x.price):'–')+'</dd>'+
+      '<dt>Janela de entrada</dt><dd class="num">'+fmtPrice(Math.min(x.status.lo,x.status.hi))+' e '+fmtPrice(Math.max(x.status.lo,x.status.hi))+'</dd>'+
+      '<dt>Stop (limite da perda)</dt><dd class="num neg">'+fmtPrice(t.stop)+' ('+f1(dist/t.entry*100)+'% do preço)</dd>'+
+      '<dt>Alvo (lucro)</dt><dd class="num pos">'+fmtPrice(t.target)+'</dd>'+
+      '<dt>Retorno para risco agora</dt><dd class="num">'+(isFinite(x.status.rr)?f1(x.status.rr)+' : 1':'–')+'</dd></dl>';
+    if(ok){
+      if(sz)sg+='<div class="howmuch">Com <b>'+money(hjCapUSDT())+'</b>, arriscando '+f1(hj.risk)+'%: '+(long?'compre ':'venda ')+'<b>'+fmtQty(sz.qty)+' '+esc(t.sym.replace(/USDT$/,''))+'</b> (≈ '+money(sz.notional)+'), alavancagem '+f1(sz.lev)+'x. Se bater o stop você perde ≈ <b>'+money(sz.riskUSD)+'</b>; se bater o alvo ganha ≈ <b>'+money(sz.rewardUSD)+'</b>.'+(sz.capped?' <span class="neg">Tamanho limitado pela alavancagem máxima: o risco real ficou em '+f1(sz.riskPct)+'%.</span>':'')+'</div>';
+      else sg+='<div class="howmuch note">Informe quanto vai usar em "Meu dinheiro" para ver o tamanho da operação.</div>';
+      sg+='<div class="note">Coloque o stop na corretora junto com a entrada.'+(long?'':' Venda exige mercado de futuros; use margem isolada.')+'</div>';
+    }
+    sg+='<details><summary class="note">Por que o robô entrou</summary><ul class="list">'+t.reasons.map(function(r){return '<li>'+esc(r)+'</li>'}).join('')+'</ul></details></div>';
+  });
+  $('hjSignals').innerHTML=sg;
+  renderHojeMy(a);renderHojeRules();
+
+  var sm=M.summarize(R.st.trades,R.st.cfg.capital),unreal=0;
+  Bot.openTrades(R.st).forEach(function(t){var p=hjPrices[t.sym]||R.st.prices[t.sym];if(p)unreal+=(p-t.entry)*t.qty*(t.side==='long'?1:-1)});
+  var tot=sm.total+unreal,stt=function(l,v,c){return '<div class="stat"><span>'+l+'</span><b'+(c?' class="'+c+'"':'')+'>'+v+'</b></div>'};
+  $('hjStats').innerHTML=stt('Resultado do robô',fmtSigned(tot)+' USDT ('+(tot>=0?'+':'')+f1(tot/R.st.cfg.capital*100)+'%)',sgn(tot))+stt('Operações fechadas',String(sm.n))+stt('Taxa de acerto',sm.n?sm.winRate.toFixed(0)+'%':'–')+stt('Maior queda',sm.n?f1(sm.maxDDPct)+'%':'–');
+  $('hjGate').innerHTML='<ul class="checklist">'+a.rd.checks.map(function(c){return '<li><span class="'+(c.ok?'ok':'no')+'">'+(c.ok?'✓':'○')+'</span><span>'+esc(c.label)+'</span><span class="d">'+esc(c.detail)+'</span></li>'}).join('')+'</ul>';
+}
+function renderHojeMy(a){
+  var cap=hjCapUSDT(),h='';
+  if(hj.cur==='BRL'&&!(hj.fx>0)&&hj.capital>0)h='<div class="warnbox">Ainda não consegui a cotação do dólar. Escolha USDT na moeda ou espere alguns segundos.</div>';
+  else if(cap>0){
+    var L=Hoje.limits(cap,hj.risk*3,hj.risk*6);
+    h='<dl class="kv"><dt>Perda máxima hoje (3 stops)</dt><dd class="num neg">'+money(L.daily)+'</dd><dt>Perda máxima na semana (6 stops)</dt><dd class="num neg">'+money(L.weekly)+'</dd><dt>Risco por operação</dt><dd class="num">'+money(cap*hj.risk/100)+'</dd></dl><p class="note">Chegou no limite do dia? Feche o app. O limite existe justamente para o dia ruim não virar um mês ruim.</p>';
+  }else h='<p class="note">Digite quanto pretende usar para ver o tamanho das operações e seus limites de perda.</p>';
+  $('hjLimits').innerHTML=h;
+  if(document.activeElement!==$('hjCapital'))$('hjCapital').value=hj.capital>0?hj.capital:'';
+  $('hjCur').value=hj.cur;$('hjRisk').value=String(hj.risk);$('hjLev').value=String(hj.lev);
+}
+function renderHojeRules(){
+  $('hjRules').innerHTML='<h2>Regras para crescer sem se quebrar</h2><ol class="rules">'+
+    '<li>Só entre se o preço ainda estiver dentro da janela mostrada. Passou? Espere o próximo sinal.</li>'+
+    '<li>Coloque o stop na corretora no mesmo instante da entrada. Sem stop, não opere.</li>'+
+    '<li>Nunca aumente o tamanho para recuperar uma perda. É assim que se quebra.</li>'+
+    '<li>Bateu o limite de perda do dia? Pare. Amanhã tem mais.</li>'+
+    '<li>Enquanto estiver escrito SÓ SIMULAR, não use dinheiro real.</li></ol>';
+}
+function bindHoje(){
+  $('hjCapital').addEventListener('change',function(e){var v=parseFloat(String(e.target.value).replace(',','.'));hj.capital=isFinite(v)&&v>0?v:0;saveHoje();refreshHoje()});
+  $('hjCur').addEventListener('change',function(e){hj.cur=e.target.value;saveHoje();refreshHoje()});
+  $('hjRisk').addEventListener('change',function(e){hj.risk=parseFloat(e.target.value);saveHoje();renderHoje()});
+  $('hjLev').addEventListener('change',function(e){hj.lev=parseInt(e.target.value,10);saveHoje();renderHoje()});
+}
+
 /* ---------- robô no servidor (somente leitura) ---------- */
 function rcfg(){return window.RADAR_CONFIG||{}}
 function rawUrl(){var c=rcfg();return c.repo?'https://raw.githubusercontent.com/'+c.repo+'/'+(c.stateBranch||'robo-estado')+'/estado.json?t='+Date.now():''}
@@ -1187,11 +1284,11 @@ function loadRemote(){
   fetch(u,{cache:'no-store'}).then(function(r){if(r.status===404)throw new Error('404');if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){
     if(!j||!j.state)throw new Error('formato');
     R={st:Bot.sanitize(j.state),meta:j.meta||{}};remoteErr='';
-  }).catch(function(e){remoteErr=e.message==='404'?'404':'net'}).then(function(){remoteBusy=false;if(botMode==='server'&&S.view==='bot')renderBot()});
+  }).catch(function(e){remoteErr=e.message==='404'?'404':'net'}).then(function(){remoteBusy=false;if(S.view==='hoje')refreshHoje();else if(botMode==='server'&&S.view==='bot')renderBot()});
 }
 function syncRemoteTimer(){
   clearInterval(remoteTimer);remoteTimer=null;
-  if(botMode==='server'&&S.view==='bot'){loadRemote();remoteTimer=setInterval(function(){if(!document.hidden)loadRemote()},60000)}
+  if((botMode==='server'&&S.view==='bot')||S.view==='hoje'){loadRemote();remoteTimer=setInterval(function(){if(!document.hidden)loadRemote()},60000)}
 }
 function renderServerHero(){
   var el=$('botHero'),h,c=rcfg(),actions=c.repo?'https://github.com/'+c.repo+'/actions/workflows/robo.yml':'#';
@@ -1236,15 +1333,15 @@ function setBotMode(m){
 
 function setView(v){
   S.view=v;document.body.setAttribute('data-view',v);
-  $('viewBot').hidden=v!=='bot';$('viewManual').hidden=v!=='manual';
-  $('tabBot').classList.toggle('on',v==='bot');$('tabManual').classList.toggle('on',v==='manual');
+  $('viewHoje').hidden=v!=='hoje';$('viewBot').hidden=v!=='bot';$('viewManual').hidden=v!=='manual';
+  $('tabHoje').classList.toggle('on',v==='hoje');$('tabBot').classList.toggle('on',v==='bot');$('tabManual').classList.toggle('on',v==='manual');
   try{localStorage.setItem(VIEW_KEY,v)}catch(e){}
   if(v==='manual'){
     if(S.wantLive){S.wantLive=false;connectLive(S.liveSym,S.tf,true)}
     setTimeout(function(){if(S.ind)drawChart()},0);
     renderHeader();
-  }else{renderBot();document.title='Radar de Futuros'}
-  syncRemoteTimer();
+  }else{document.title='Radar de Futuros';if(v==='bot')renderBot();else renderHoje()}
+  syncRemoteTimer();syncHojeTimer();
 }
 
 /* ---------- início ---------- */
@@ -1264,7 +1361,8 @@ function init(){
   botMode=bm==='local'?'local':'server';
   $('bmServer').classList.toggle('on',botMode==='server');$('bmLocal').classList.toggle('on',botMode==='local');
   $('bmNote').textContent=botMode==='server'?'Roda no servidor do GitHub, mesmo com o computador desligado. Aqui você só acompanha.':'Roda só enquanto esta aba estiver aberta e se recupera ao reabrir.';
-  setView(view==='manual'?'manual':'bot');
+  loadHoje();
+  setView(view==='manual'?'manual':(view==='bot'?'bot':'hoje'));
   if(L.running){startBotTimer();botTick()}
   D.fetchSymbols().then(function(list){if(list.length)$('symlist').innerHTML=list.map(function(s){return '<option value="'+s+'">'}).join('')}).catch(function(){});
   if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){

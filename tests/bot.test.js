@@ -171,3 +171,18 @@ test('applyConfig: liga, troca estrutura com posição aberta e protege o capita
   B.applyConfig(st,B.parseConfig({moedas:['ETHUSDT'],ligado:false}),4000);assert.equal(st.running,false);
   B.applyConfig(st,B.parseConfig({moedas:['ETHUSDT']}),5000);assert.equal(st.running,true);assert.equal(st.startedAt,1000);
 });
+
+test('zerarHistorico: texto novo começa conta limpa, o mesmo texto não repete',()=>{
+  const cs=series(11,95000,700),st=B.defaults();
+  B.applyConfig(st,B.parseConfig({moedas:['BTCUSDT'],zerarHistorico:'v1'}),1000);
+  st.cursor.BTCUSDT=cs[80].t;B.step(st,{BTCUSDT:cs.slice(0,500)},nowAfter(cs,500));
+  assert.ok(st.trades.length>0);st.gaps=2;
+  const n=st.trades.length;
+  B.applyConfig(st,B.parseConfig({moedas:['BTCUSDT'],zerarHistorico:'v1'}),2000);
+  assert.equal(st.trades.length,n,'mesmo texto não zera de novo');
+  const notes=B.applyConfig(st,B.parseConfig({moedas:['BTCUSDT'],zerarHistorico:'v2'}),3000);
+  assert.equal(st.trades.length,0);assert.equal(st.gaps,0);assert.deepEqual(st.cursor,{});assert.equal(st.startedAt,3000);assert.equal(st.resetToken,'v2');
+  assert.ok(notes.some(x=>/zerado/.test(x)));
+  assert.equal(B.sanitize(JSON.parse(JSON.stringify(st))).resetToken,'v2');
+  assert.equal(B.parseConfig({}).resetToken,'');
+});
