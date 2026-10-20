@@ -1,0 +1,66 @@
+{
+ "generatedAt": 1792516409916,
+ "tf": "1h",
+ "coins": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "SOLUSDT",
+  "BNBUSDT",
+  "XRPUSDT",
+  "ADAUSDT"
+ ],
+ "verdict": {
+  "checks": [
+   {
+    "ok": true,
+    "label": "Pelo menos 100 operações fora da amostra",
+    "detail": "1639"
+   },
+   {
+    "ok": false,
+    "label": "Média de pelo menos +0,05R por operação",
+    "detail": "-0.036R"
+   },
+   {
+    "ok": false,
+    "label": "Fator de lucro de pelo menos 1,15",
+    "detail": "0.94"
+   },
+   {
+    "ok": false,
+    "label": "Lucro em pelo menos 60% das janelas de teste",
+    "detail": "4 de 8"
+   },
+   {
+    "ok": true,
+    "label": "Melhor que a estratégia padrão sem otimização",
+    "detail": "-59.0R contra -290.1R"
+   }
+  ],
+  "passed": 2,
+  "recommended": false
+ },
+ "oos": {
+  "n": 1639,
+  "wins": 436,
+  "winRate": 26.601586333129955,
+  "totalR": -58.95866668168956,
+  "avgR": -0.035972340867412786,
+  "std": 1.5250851742005231,
+  "tStat": -0.9549135977754573,
+  "pf": 0.9446376788156633,
+  "maxDD": 111.21328537095182
+ },
+ "baseline": {
+  "n": 4462,
+  "wins": 1552,
+  "winRate": 34.78260869565217,
+  "totalR": -290.11945503240156,
+  "avgR": -0.06502004819193222,
+  "std": 1.4244585067544757,
+  "tStat": -3.049033997532449,
+  "pf": 0.9096128815320167,
+  "maxDD": 361.97405557745753
+ },
+ "finals": []
+}
