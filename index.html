@@ -32,7 +32,15 @@
   <p id="msg" class="msg" role="status" aria-live="polite"></p>
 
   <div id="viewBot">
+    <div class="modebar">
+      <div class="seg" role="group" aria-label="Onde o robô roda">
+        <button id="bmServer" class="on" type="button">Servidor 24h</button>
+        <button id="bmLocal" type="button">Neste navegador</button>
+      </div>
+      <span class="note" id="bmNote"></span>
+    </div>
     <section class="card botstate" id="botHero" aria-label="Estado do robô"></section>
+    <section class="card" id="botSrv" hidden></section>
     <div class="stats" id="botStats"></div>
     <section class="card"><h2>Saldo do robô</h2><div id="botCurve"></div></section>
     <section class="card"><h2>Posições abertas</h2><div id="botOpen"></div></section>
@@ -289,6 +297,7 @@
 
 <script src="js/engine.js"></script>
 <script src="js/metrics.js"></script>
+<script src="js/config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/bot.js"></script>
 <script src="js/app.js"></script>

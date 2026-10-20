@@ -787,7 +787,7 @@ function downloadFile(name,text,type){
 }
 function stamp(){var d=new Date(),p=function(n){return String(n).padStart(2,'0')};return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())}
 function exportBackup(){
-  downloadFile('radar-backup-'+stamp()+'.json',JSON.stringify({app:'radar-futuros',version:2,exportedAt:new Date().toISOString(),data:snapshot(),bot:B},null,1),'application/json');
+  downloadFile('radar-backup-'+stamp()+'.json',JSON.stringify({app:'radar-futuros',version:2,exportedAt:new Date().toISOString(),data:snapshot(),bot:L},null,1),'application/json');
   say('Backup exportado.');track('export');
 }
 function importBackup(file){
@@ -800,7 +800,7 @@ function importBackup(file){
     if(!window.confirm('Importar o backup vai substituir o diário e as configurações atuais ('+n+' operações no arquivo). Continuar?'))return;
     pushUndo();
     S.trades=[];S.custom={};applyData(d.data);matchPreset();S.cmpCache={};
-    if(d.bot){B=Bot.sanitize(d.bot);B.running=false;stopBotTimer();saveBot();renderBot()}
+    if(d.bot){L=Bot.sanitize(d.bot);L.running=false;B=L;stopBotTimer();saveBot();renderBot()}
     useDemo();syncInputs();say('Backup importado: '+S.trades.length+' operações.');
   };
   fr.onerror=function(){say('Não consegui ler o arquivo.')};
@@ -926,6 +926,8 @@ function bind(){
   $('bkFile').addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];e.target.value='';if(f)importBackup(f)});
 
   bindChart();bindBot();
+  $('bmServer').addEventListener('click',function(){setBotMode('server')});
+  $('bmLocal').addEventListener('click',function(){setBotMode('local')});
   $('tabBot').addEventListener('click',function(){setView('bot')});
   $('tabManual').addEventListener('click',function(){setView('manual')});
   window.addEventListener('resize',drawChart);
@@ -969,11 +971,12 @@ function onKey(e){
 
 /* ---------- robô de simulação ---------- */
 var Bot=window.RadarBot,BOT_KEY='radar-robo-v1',VIEW_KEY='radar-aba';
-var B=Bot.defaults(),botBusy=false,botTimer=null,botTestBusy=false,botResetArm=null,botNet='';
+var L=Bot.defaults(),B=L,R=null,remoteErr='',remoteBusy=false,remoteTimer=null,botMode='server',MODE_KEY2='radar-robo-modo';
+var botBusy=false,botTimer=null,botTestBusy=false,botResetArm=null,botNet='';
 var BOT_IN={bCapital:'capital',bRisk:'riskPct',bLev:'lev',bMaxOpen:'maxOpen',bDaily:'dailyPct',bFee:'feePct',bSlip:'slipPct'};
 
-function loadBot(){try{var r=localStorage.getItem(BOT_KEY);if(r)B=Bot.sanitize(JSON.parse(r))}catch(e){}}
-function saveBot(){try{localStorage.setItem(BOT_KEY,JSON.stringify(B))}catch(e){}}
+function loadBot(){try{var r=localStorage.getItem(BOT_KEY);if(r)L=Bot.sanitize(JSON.parse(r))}catch(e){}B=L}
+function saveBot(){try{localStorage.setItem(BOT_KEY,JSON.stringify(L))}catch(e){}}
 function botLocked(){return B.running||Bot.openTrades(B).length>0}
 function presetName(id){var m=presetList().filter(function(x){return x.id===id})[0];return m?m.name:'Personalizada'}
 function symInput(v){
@@ -982,38 +985,38 @@ function symInput(v){
   return s;
 }
 
-function botEvery(){return clamp(D.TFS[B.cfg.tf]/4,30000,300000)}
+function botEvery(){return clamp(D.TFS[L.cfg.tf]/4,30000,300000)}
 function startBotTimer(){clearInterval(botTimer);botTimer=setInterval(botTick,botEvery())}
 function stopBotTimer(){clearInterval(botTimer);botTimer=null}
 function botStart(){
-  if(B.running)return;
-  if(!B.startedAt)B.startedAt=Date.now();
-  if(!Bot.openTrades(B).length)B.cursor={};
-  B.running=true;saveBot();startBotTimer();renderBot();botTick();track('bot');
+  if(L.running)return;
+  if(!L.startedAt)L.startedAt=Date.now();
+  if(!Bot.openTrades(L).length)L.cursor={};
+  L.running=true;saveBot();startBotTimer();renderBot();botTick();track('bot');
 }
 function botStop(){
-  B.running=false;stopBotTimer();saveBot();renderBot();
-  if(Bot.openTrades(B).length)say('Robô pausado. As posições abertas continuam valendo: ao religar, ele recupera o que aconteceu com elas.');
+  L.running=false;stopBotTimer();saveBot();renderBot();
+  if(Bot.openTrades(L).length)say('Robô pausado. As posições abertas continuam valendo: ao religar, ele recupera o que aconteceu com elas.');
 }
 function botTick(){
-  if(!B.running||botBusy)return;
+  if(!L.running||botBusy)return;
   botBusy=true;
-  var tf=B.cfg.tf,syms=B.cfg.syms.slice();
+  var tf=L.cfg.tf,syms=L.cfg.syms.slice();
   Promise.all(syms.map(function(sym){
     return D.fetchKlines(sym,tf,500).then(function(cs){return {sym:sym,cs:cs}}).catch(function(){return null});
   })).then(function(res){
     botBusy=false;
-    if(!B.running||tf!==B.cfg.tf)return;
+    if(!L.running||tf!==L.cfg.tf)return;
     var data={},ok=0;
-    res.forEach(function(r){if(r){data[r.sym]=r.cs;ok++;B.prices[r.sym]=r.cs[r.cs.length-1].c}});
-    if(!ok){botNet='off';renderBotHero();return}
+    res.forEach(function(r){if(r){data[r.sym]=r.cs;ok++;L.prices[r.sym]=r.cs[r.cs.length-1].c}});
+    if(!ok){botNet='off';if(botMode==='local')renderBotHero();return}
     botNet=ok<syms.length?'part':'ok';
-    var ev=Bot.step(B,data,Date.now());
-    saveBot();renderBot();notifyBot(ev);
+    var ev=Bot.step(L,data,Date.now());
+    saveBot();if(botMode==='local')renderBot();notifyBot(ev);
   });
 }
 function notifyBot(ev){
-  if(!B.cfg.notify||!ev.length||typeof Notification==='undefined'||Notification.permission!=='granted')return;
+  if(!L.cfg.notify||!ev.length||typeof Notification==='undefined'||Notification.permission!=='granted')return;
   ev.slice(0,4).forEach(function(e){
     var t=e.trade,open=e.type==='open';
     try{new Notification(open?'Robô abriu '+(t.side==='long'?'compra':'venda')+' em '+t.sym:'Robô fechou '+t.sym+' ('+t.reason+')',
@@ -1027,6 +1030,7 @@ function botSummary(){
   return {sm:sm,unreal:unreal,equity:Bot.balance(B)+unreal};
 }
 function renderBotHero(){
+  if(botMode==='server'){renderServerHero();return}
   var run=B.running,h='<div class="state"><div class="qword '+(run?'long':'wait')+'">'+(run?'ROBÔ LIGADO':'ROBÔ DESLIGADO')+'</div>'+
     '<button id="bToggle" class="btn big '+(run?'':'primary')+'" type="button">'+(run?'Pausar robô':'Ligar robô')+'</button></div>';
   if(run){
@@ -1041,6 +1045,8 @@ function renderBotHero(){
   $('botHero').className='card botstate'+(run?' on':'');$('botHero').innerHTML=h;
 }
 function renderBot(){
+  B=botMode==='server'?(R?R.st:Bot.defaults()):L;
+  $('botCfgCard').hidden=botMode==='server';$('botSrv').hidden=botMode!=='server';
   renderBotHero();
   var bs=botSummary(),sm=bs.sm,cap=B.cfg.capital,open=Bot.openTrades(B),total=bs.equity-cap;
   var pf=sm.pf===Infinity?'∞':fmt2(sm.pf),st=function(l,v,c){return '<div class="stat"><span>'+l+'</span><b'+(c?' class="'+c+'"':'')+'>'+v+'</b></div>'};
@@ -1062,7 +1068,9 @@ function renderBot(){
     cl.map(function(t){return '<tr><td class="l">'+fmtDate(t.closedAt)+'</td><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r">'+fmtPrice(t.exit)+'</td><td class="r '+sgn(t.pnl)+'">'+fmtSigned(t.pnl)+'</td><td class="r">'+(t.risk>0?fmtSigned(t.pnl/t.risk):'–')+'</td><td class="l">'+esc(t.reason)+'</td></tr>'}).join('')+'</tbody></table></div>';
   if(B.log.length)h+='<ul class="list">'+B.log.slice(-5).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
   $('botHist').innerHTML=h;
-  renderBotCfg();renderBotReady();
+  if(botMode==='local')renderBotCfg();
+  else renderServerCfg();
+  renderBotReady();
 }
 function renderBotCfg(){
   var lockAll=B.running,lockStruct=botLocked(),sel=$('bPreset'),opts=presetList().map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>'}).join('');
@@ -1102,7 +1110,7 @@ function botTest(){
     var best=null;rows.forEach(function(r){if(r.a.n>=10&&(!best||r.a.totalR>best.a.totalR))best=r});
     var f=function(n){return n.toFixed(2).replace('.',',')};
     $('bTestOut').innerHTML='<div class="tablewrap"><table><thead><tr><th class="l">Estratégia</th><th class="r">Ops</th><th class="r">Acerto</th><th class="r">Resultado (R)</th><th class="r">R por op.</th><th class="r">Fator de lucro</th><th></th></tr></thead><tbody>'+
-      rows.map(function(r){var a=r.a;return '<tr class="'+(best===r?'activeRow':'')+'"><td class="l">'+esc(r.x.name)+(best===r?' <span class="tag">melhor nesta amostra</span>':'')+'</td><td class="r">'+a.n+'</td><td class="r">'+(a.n?a.winRate.toFixed(0)+'%':'–')+'</td><td class="r '+sgn(a.totalR)+'">'+(a.n?fmtSigned(a.totalR):'–')+'</td><td class="r">'+(a.n?fmtSigned(a.avgR):'–')+'</td><td class="r">'+(a.n?(isFinite(a.pf)?f(a.pf):'∞'):'–')+'</td><td class="r"><button class="btn" type="button" data-use="'+esc(r.x.id)+'"'+(botLocked()?' disabled':'')+'>Usar</button></td></tr>'}).join('')+'</tbody></table></div>'+
+      rows.map(function(r){var a=r.a;return '<tr class="'+(best===r?'activeRow':'')+'"><td class="l">'+esc(r.x.name)+(best===r?' <span class="tag">melhor nesta amostra</span>':'')+'</td><td class="r">'+a.n+'</td><td class="r">'+(a.n?a.winRate.toFixed(0)+'%':'–')+'</td><td class="r '+sgn(a.totalR)+'">'+(a.n?fmtSigned(a.totalR):'–')+'</td><td class="r">'+(a.n?fmtSigned(a.avgR):'–')+'</td><td class="r">'+(a.n?(isFinite(a.pf)?f(a.pf):'∞'):'–')+'</td><td class="r"><button class="btn" type="button" data-use="'+esc(r.x.id)+'"'+(botLocked()||botMode!=='local'?' disabled':'')+'>Usar</button></td></tr>'}).join('')+'</tbody></table></div>'+
       '<p class="note">'+data.length+' de '+syms.length+' moedas testadas, '+data[0].cs.length+' velas cada. "R" é o lucro medido em múltiplos do risco de cada operação. Amostras curtas enganam: confirme no robô rodando.</p>';
   });
 }
@@ -1115,7 +1123,7 @@ function botAddSym(){
   D.fetchKlines(s,B.cfg.tf,50).then(function(){if(botLocked())return;B.cfg.syms.push(s);saveBot();renderBot()}).catch(function(e){say('Não consegui adicionar '+s+': '+e.message+'.')});
 }
 function bindBot(){
-  $('botHero').addEventListener('click',function(e){if(e.target.closest('#bToggle'))B.running?botStop():botStart()});
+  $('botHero').addEventListener('click',function(e){if(botMode==='local'&&e.target.closest('#bToggle'))L.running?botStop():botStart()});
   $('bPreset').addEventListener('change',function(e){
     var m=presetList().filter(function(x){return x.id===e.target.value})[0];if(!m||botLocked())return;
     B.cfg.presetId=m.id;B.params=E.normParams(m.p);saveBot();renderBot();
@@ -1154,16 +1162,76 @@ function bindBot(){
     var b=$('bReset');
     if(!botResetArm){b.textContent='Confirmar: apagar o histórico do robô?';botResetArm=setTimeout(function(){botResetArm=null;b.textContent='Zerar robô'},4000);return}
     clearTimeout(botResetArm);botResetArm=null;b.textContent='Zerar robô';
-    var cfg=B.cfg,params=B.params;stopBotTimer();B=Bot.defaults();B.cfg=cfg;B.params=params;saveBot();renderBot();say('Robô zerado.');
+    var cfg=L.cfg,params=L.params;stopBotTimer();L=Bot.defaults();L.cfg=cfg;L.params=params;B=L;saveBot();renderBot();say('Robô zerado.');
   });
   $('bTestBtn').addEventListener('click',botTest);
   $('bTestOut').addEventListener('click',function(e){
-    var b=e.target.closest('[data-use]');if(!b||botLocked())return;
+    var b=e.target.closest('[data-use]');if(!b||botMode!=='local'||botLocked())return;
     var m=presetList().filter(function(x){return x.id===b.getAttribute('data-use')})[0];if(!m)return;
     B.cfg.presetId=m.id;B.params=E.normParams(m.p);saveBot();renderBot();say('Estratégia '+m.name+' selecionada para o robô.');
   });
   document.addEventListener('visibilitychange',function(){if(!document.hidden&&B.running)botTick()});
   window.addEventListener('online',function(){if(B.running)botTick()});
+}
+
+
+/* ---------- robô no servidor (somente leitura) ---------- */
+function rcfg(){return window.RADAR_CONFIG||{}}
+function rawUrl(){var c=rcfg();return c.repo?'https://raw.githubusercontent.com/'+c.repo+'/'+(c.stateBranch||'robo-estado')+'/estado.json?t='+Date.now():''}
+function ghUrl(kind,path){var c=rcfg();return c.repo?'https://github.com/'+c.repo+'/'+kind+'/'+(c.defaultBranch||'main')+'/'+path:'#'}
+function loadRemote(){
+  if(remoteBusy)return;
+  var u=rawUrl();
+  if(!u){remoteErr='config';if(botMode==='server')renderBot();return}
+  remoteBusy=true;
+  fetch(u,{cache:'no-store'}).then(function(r){if(r.status===404)throw new Error('404');if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){
+    if(!j||!j.state)throw new Error('formato');
+    R={st:Bot.sanitize(j.state),meta:j.meta||{}};remoteErr='';
+  }).catch(function(e){remoteErr=e.message==='404'?'404':'net'}).then(function(){remoteBusy=false;if(botMode==='server'&&S.view==='bot')renderBot()});
+}
+function syncRemoteTimer(){
+  clearInterval(remoteTimer);remoteTimer=null;
+  if(botMode==='server'&&S.view==='bot'){loadRemote();remoteTimer=setInterval(function(){if(!document.hidden)loadRemote()},60000)}
+}
+function renderServerHero(){
+  var el=$('botHero'),h,c=rcfg(),actions=c.repo?'https://github.com/'+c.repo+'/actions/workflows/robo.yml':'#';
+  if(!R){
+    var msg=remoteErr==='404'?'O servidor ainda não gravou nada. No GitHub, abra a aba Actions, escolha "Robô 24h" e clique em Run workflow. Ou espere até 10 minutos pela primeira rodada automática e atualize esta página.'
+      :remoteErr==='config'?'Falta indicar o repositório em js/config.js.'
+      :remoteErr==='net'?'Não consegui ler o estado do servidor agora. Tento de novo em 1 minuto.':'Carregando o estado do servidor…';
+    h='<div class="state"><div class="qword wait">SERVIDOR 24H</div><a class="btn" target="_blank" rel="noopener" href="'+esc(actions)+'">Abrir Actions</a></div><p class="qtext">'+esc(msg)+'</p>';
+    el.className='card botstate';el.innerHTML=h;return;
+  }
+  var st=R.st,m=R.meta,run=st.running,age=Date.now()-(m.lastRun||0);
+  h='<div class="state"><div class="qword '+(run?'long':'wait')+'">SERVIDOR 24H '+(run?'LIGADO':'DESLIGADO')+'</div><a class="btn" target="_blank" rel="noopener" href="'+esc(ghUrl('edit',c.configPath||'robo/config.json'))+'">Editar configuração</a></div>';
+  h+='<p class="qtext">'+(run?'Rodando no GitHub'+(st.startedAt?' desde '+fmtDate(st.startedAt):'')+' · última checagem '+(m.lastRun?'há '+fmtDur(age):'ainda não aconteceu')+'. Acompanhando '+esc(st.cfg.syms.join(', '))+' em velas de '+esc(st.cfg.tf)+' com a estratégia '+esc(presetName(st.cfg.presetId))+'.':'Desligado pela configuração ("ligado": false). Nenhuma checagem de mercado está sendo feita.')+'</p>';
+  if(run&&age>25*60000)h+='<div class="warnbox">O servidor não checa há '+fmtDur(age)+'. O GitHub às vezes atrasa execuções agendadas. Se isso continuar, abra a aba Actions e veja se o "Robô 24h" está ativo.</div>';
+  if(m.net==='off')h+='<div class="warnbox">Na última checagem o servidor não conseguiu dados da Binance'+(m.errors&&m.errors[0]?' ('+esc(m.errors[0])+')':'')+'. Ele tenta de novo sozinho e recupera as velas perdidas.</div>';
+  else if(m.net==='part')h+='<div class="warnbox">Algumas moedas não responderam na última checagem'+(m.errors&&m.errors[0]?' ('+esc(m.errors[0])+')':'')+'. Serão recuperadas na próxima.</div>';
+  if(m.configError)h+='<div class="warnbox">Erro na configuração, mantendo a anterior: '+esc(m.configError)+'</div>';
+  h+='<p class="qfoot">O robô roda sozinho no servidor do GitHub, com o seu computador desligado, checando a cada cerca de 5 minutos. Ele decide só quando uma vela fecha. Aqui você acompanha; para mudar algo, edite o arquivo robo/config.json.</p>';
+  el.className='card botstate'+(run?' on':'');el.innerHTML=h;
+}
+function renderServerCfg(){
+  var st=R?R.st:null,c=rcfg();
+  if(!st){$('botSrv').innerHTML='';return}
+  var k=st.cfg,dl=function(a,b){return '<dt>'+a+'</dt><dd class="num">'+esc(b)+'</dd>'};
+  $('botSrv').innerHTML='<h2>Configuração do servidor</h2><dl class="kv">'+
+    dl('Estratégia',presetName(k.presetId))+dl('Intervalo',k.tf)+dl('Moedas',k.syms.join(', '))+dl('Capital',fmt2(k.capital)+' USDT')+
+    dl('Risco por operação',f1(k.riskPct)+'%')+dl('Alavancagem',k.lev+'x')+dl('Máx. posições',String(k.maxOpen))+dl('Limite diário',f1(k.dailyPct)+'%')+
+    dl('Taxa / derrapagem por lado',k.feePct+'% / '+k.slipPct+'%')+'</dl>'+
+    '<div class="toolrow"><a class="btn" target="_blank" rel="noopener" href="'+esc(ghUrl('edit',c.configPath||'robo/config.json'))+'">Editar configuração</a>'+
+    '<a class="btn" target="_blank" rel="noopener" href="'+esc(ghUrl('blob','robo/LEIA-ME.md'))+'">Ver o que cada campo faz</a></div>'+
+    '<p class="note">Mudar intervalo ou moedas encerra as posições abertas e recomeça a partir de agora. O capital só muda com o histórico vazio.</p>';
+}
+function setBotMode(m){
+  botMode=m;
+  try{localStorage.setItem(MODE_KEY2,m)}catch(e){}
+  $('bmServer').classList.toggle('on',m==='server');$('bmLocal').classList.toggle('on',m==='local');
+  $('bmNote').textContent=m==='server'
+    ?'Roda no servidor do GitHub, mesmo com o computador desligado. Aqui você só acompanha.'
+    :'Roda só enquanto esta aba estiver aberta e se recupera ao reabrir.';
+  syncRemoteTimer();renderBot();
 }
 
 function setView(v){
@@ -1176,6 +1244,7 @@ function setView(v){
     setTimeout(function(){if(S.ind)drawChart()},0);
     renderHeader();
   }else{renderBot();document.title='Radar de Futuros'}
+  syncRemoteTimer();
 }
 
 /* ---------- início ---------- */
@@ -1191,9 +1260,12 @@ function init(){
   evaluateOpen();renderAll();
   setLiveStatus('','');S.wantLive=!!(saved.first||saved.src==='live');
   loadBot();
-  var view;try{view=localStorage.getItem(VIEW_KEY)}catch(e){}
+  var view,bm;try{view=localStorage.getItem(VIEW_KEY);bm=localStorage.getItem(MODE_KEY2)}catch(e){}
+  botMode=bm==='local'?'local':'server';
+  $('bmServer').classList.toggle('on',botMode==='server');$('bmLocal').classList.toggle('on',botMode==='local');
+  $('bmNote').textContent=botMode==='server'?'Roda no servidor do GitHub, mesmo com o computador desligado. Aqui você só acompanha.':'Roda só enquanto esta aba estiver aberta e se recupera ao reabrir.';
   setView(view==='manual'?'manual':'bot');
-  if(B.running){startBotTimer();botTick()}
+  if(L.running){startBotTimer();botTick()}
   D.fetchSymbols().then(function(list){if(list.length)$('symlist').innerHTML=list.map(function(s){return '<option value="'+s+'">'}).join('')}).catch(function(){});
   if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
     window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});

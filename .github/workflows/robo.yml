@@ -1,0 +1,57 @@
+name: Robô 24h
+
+# Roda o robô de simulação a cada ~5 minutos, mesmo com o computador desligado.
+# O estado fica na branch "robo-estado" (um único commit, sempre reescrito) e o site só lê.
+# O GitHub pode atrasar execuções agendadas; o robô recupera as velas perdidas na rodada seguinte.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: robo-24h
+  cancel-in-progress: false
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Baixar o estado salvo
+        run: |
+          set -e
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$URL" robo-estado >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch robo-estado "$URL" estado
+          else
+            git init -q estado
+            git -C estado checkout -q --orphan robo-estado
+            git -C estado remote add origin "$URL"
+          fi
+
+      - name: Rodar uma checagem
+        run: node server/run-bot.js robo/config.json estado/estado.json
+
+      - name: Guardar o estado
+        working-directory: estado
+        run: |
+          set -e
+          # a branch de dados nunca deve gerar deploy na Vercel
+          printf '{"git":{"deploymentEnabled":false},"ignoreCommand":"exit 0"}\n' > vercel.json
+          git config user.name "robo-24h"
+          git config user.email "robo-24h@users.noreply.github.com"
+          git add -A
+          if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git commit -q --amend -m "estado do robô"
+          else
+            git commit -q -m "estado do robô"
+          fi
+          git push -q --force origin robo-estado

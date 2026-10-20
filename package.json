@@ -1,6 +1,6 @@
 {
   "name": "radar-de-futuros",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Simulador educacional de futuros: sinal por regras, diário, métricas e backtest.",
   "scripts": {
