@@ -38,6 +38,10 @@ jobs:
           fi
 
       - name: Rodar uma checagem
+        env:
+          # opcionais: avisos no Telegram (veja robo/LEIA-ME.md)
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node server/run-bot.js robo/config.json estado/estado.json
 
       - name: Guardar o estado

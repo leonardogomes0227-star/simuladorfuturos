@@ -12,7 +12,7 @@ var CFG_RANGE={capital:[10,1e7],riskPct:[0.1,5],lev:[1,20],maxOpen:[1,10],dailyP
 
 function defaults(){
   return {cfg:{capital:1000,riskPct:1,lev:3,maxOpen:3,dailyPct:3,feePct:0.05,slipPct:0.02,tf:'15m',syms:['BTCUSDT','ETHUSDT','SOLUSDT'],presetId:'padrao',notify:false},
-    params:E.normParams(E.PRESETS.padrao.p),running:false,startedAt:0,lastRun:0,cursor:{},prices:{},trades:[],gaps:0,log:[]};
+    params:E.normParams(E.PRESETS.padrao.p),resetToken:'',running:false,startedAt:0,lastRun:0,cursor:{},prices:{},trades:[],gaps:0,log:[]};
 }
 function clamp(v,a,b){return Math.min(b,Math.max(a,v))}
 function isNum(v){return typeof v==='number'&&isFinite(v)}
@@ -39,6 +39,7 @@ function sanitize(raw){
   if(!st.cfg.syms.length)st.cfg.syms=['BTCUSDT'];
   if(typeof c.presetId==='string')st.cfg.presetId=c.presetId.slice(0,40);
   st.cfg.notify=!!c.notify;
+  if(typeof raw.resetToken==='string')st.resetToken=raw.resetToken.slice(0,40);
   if(raw.params)st.params=E.normParams(raw.params);
   st.running=!!raw.running;
   ['startedAt','lastRun','gaps'].forEach(function(k){if(isNum(raw[k])&&raw[k]>=0)st[k]=raw[k]});
@@ -177,11 +178,17 @@ function parseConfig(conf){
     params=E.normParams(E.PRESETS[key].p);presetId=key;
   }
   cfg.presetId=presetId;cfg.notify=false;
-  return {enabled:conf.ligado!==false,cfg:cfg,params:params};
+  var token=conf.zerarHistorico==null?'':String(conf.zerarHistorico).slice(0,40);
+  return {enabled:conf.ligado!==false,cfg:cfg,params:params,resetToken:token};
 }
 // Aplica a configuração lida ao estado. Mudar intervalo ou moedas encerra posições abertas (os cursores deixam de valer).
 function applyConfig(st,parsed,now){
   var notes=[],c=st.cfg,n=parsed.cfg;
+  // "zerarHistorico": troque o texto no arquivo para começar uma conta nova (útil ao mudar estratégia ou intervalo)
+  if(parsed.resetToken&&parsed.resetToken!==st.resetToken){
+    st.trades=[];st.cursor={};st.gaps=0;st.log=[];st.startedAt=parsed.enabled?now:0;st.resetToken=parsed.resetToken;
+    notes.push('Histórico zerado ('+parsed.resetToken+')');
+  }
   var structural=n.tf!==c.tf||n.syms.join(',')!==c.syms.join(',');
   if(structural){
     if(openTrades(st).length){var out=closeAll(st,st.prices,now);notes.push('Configuração mudou: '+out.length+' posição(ões) encerrada(s) ao último preço')}

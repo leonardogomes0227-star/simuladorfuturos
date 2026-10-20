@@ -1,7 +1,7 @@
 {
   "ligado": true,
   "estrategia": "padrao",
-  "intervalo": "15m",
+  "intervalo": "1h",
   "moedas": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
   "capital": 1000,
   "riscoPorOperacaoPct": 1,
@@ -9,5 +9,6 @@
   "maxPosicoes": 3,
   "limiteDiarioPct": 3,
   "taxaPorLadoPct": 0.05,
-  "derrapagemPorLadoPct": 0.02
+  "derrapagemPorLadoPct": 0.02,
+  "zerarHistorico": "fase2-1h"
 }

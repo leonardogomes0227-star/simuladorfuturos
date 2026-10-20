@@ -87,3 +87,42 @@ test('estado corrompido recomeça do zero em vez de quebrar',async()=>{
   const {st}=await run({...t,fetchImpl:fetchOk,now:nowFor(300)});
   assert.equal(st.running,true);assert.equal(st.trades.length,0);
 });
+
+test('Telegram: avisa abertura e fechamento, esconde o token e não derruba a rodada',async()=>{
+  const sent=[];
+  const f=(u,o)=>/api\.telegram\.org/.test(u)?(sent.push({u,body:JSON.parse(o.body)}),Promise.resolve({ok:true,status:200})):fetchOk(u);
+  const t=tmp(CONF);
+  N=300;await run({...t,fetchImpl:f,now:nowFor(300),telegram:{token:'SEGREDO',chatId:'42'}});
+  assert.equal(sent.length,0);
+  for(N=301;N<=500;N+=1)await run({...t,fetchImpl:f,now:nowFor(N),telegram:{token:'SEGREDO',chatId:'42'}});
+  const st=JSON.parse(fs.readFileSync(t.statePath)).state;
+  assert.ok(sent.length>0,'deve ter avisado');
+  const opens=sent.filter(x=>/COMPRAR|VENDER/.test(x.body.text)).length;
+  assert.equal(opens,st.trades.length,'checando a cada vela: um aviso de abertura por operação');
+  const closes=sent.length-opens;assert.equal(closes,st.trades.filter(x=>x.status==='closed').length);
+  // depois de uma pausa longa, sinais antigos não são avisados como se fossem novos
+  const t4=tmp(CONF),sent4=[];N=300;
+  const f4=(u,o)=>/api\.telegram\.org/.test(u)?(sent4.push(JSON.parse(o.body).text),Promise.resolve({ok:true,status:200})):fetchOk(u);
+  await run({...t4,fetchImpl:f4,now:nowFor(300),telegram:{token:'X',chatId:'1'}});
+  N=700;await run({...t4,fetchImpl:f4,now:nowFor(700),telegram:{token:'X',chatId:'1'}});
+  const st4=JSON.parse(fs.readFileSync(t4.statePath)).state;
+  assert.ok(st4.trades.length>5);
+  assert.ok(sent4.filter(x=>/COMPRAR|VENDER/.test(x)).length<=2,'só sinais recentes');
+  assert.ok(sent.every(x=>x.body.chat_id==='42'&&/SIMULAÇÃO/.test(x.body.text)));
+  assert.ok(sent.every(x=>x.u.includes('botSEGREDO')));
+  // falha do Telegram vira erro registrado, sem derrubar nem expor o token
+  const t2=tmp(CONF);N=300;
+  const bad=(u)=>/telegram/.test(u)?Promise.reject(new Error('falhou bot SEGREDO')):fetchOk(u);
+  await run({...t2,fetchImpl:bad,now:nowFor(300),telegram:{token:'SEGREDO',chatId:'42'}});
+  const errs=[];for(N=301;N<=500;N+=1){const r=await run({...t2,fetchImpl:bad,now:nowFor(N),telegram:{token:'SEGREDO',chatId:'42'}});if(r.meta.notify&&r.meta.notify.error)errs.push(r.meta.notify.error)}
+  assert.ok(errs.length>0,'o erro do Telegram deve ser registrado');
+  assert.ok(errs.every(e=>/falhou/.test(e)&&!e.includes('SEGREDO')));
+  const metas=JSON.parse(fs.readFileSync(t2.statePath)).meta;
+  assert.equal(metas.net,'ok');
+  assert.ok(!JSON.stringify(metas).includes('SEGREDO'));
+  // sem credenciais: não tenta enviar
+  const t3=tmp(CONF);let calls=0;N=300;
+  await run({...t3,fetchImpl:(u,o)=>{if(/telegram/.test(u))calls++;return fetchOk(u)},now:nowFor(300)});
+  for(N=340;N<=700;N+=40)await run({...t3,fetchImpl:(u,o)=>{if(/telegram/.test(u))calls++;return fetchOk(u)},now:nowFor(N)});
+  assert.equal(calls,0);
+});

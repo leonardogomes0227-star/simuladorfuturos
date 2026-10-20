@@ -50,3 +50,13 @@ test('fetchSymbols filtra pares USDT',async()=>{
   const l=await D.fetchSymbols(()=>ok([{symbol:'ETHUSDT'},{symbol:'BTCBRL'},{symbol:'BTCUSDT'},{symbol:'ETHUPUSDT'},{x:1}]));
   assert.deepEqual(l,['BTCUSDT','ETHUSDT']);
 });
+
+test('fetchPrices lê vários pares e usa o espelho se o principal falhar',async()=>{
+  const urls=[];
+  const f=u=>{urls.push(u);return urls.length===1?Promise.reject(new Error('rede')):ok([{symbol:'BTCUSDT',price:'81000.5'},{symbol:'USDTBRL',price:'5.4'},{symbol:'X',price:'1'},{symbol:'ETHUSDT',price:'0'}])};
+  const p=await D.fetchPrices(['BTCUSDT','USDTBRL','lixo'],f);
+  assert.deepEqual(p,{BTCUSDT:81000.5,USDTBRL:5.4});
+  assert.match(decodeURIComponent(urls[0]),/symbols=\["BTCUSDT","USDTBRL"\]/);
+  assert.deepEqual(await D.fetchPrices([],()=>{throw new Error('não deve chamar')}),{});
+  await assert.rejects(D.fetchPrices(['BTCUSDT'],()=>Promise.reject(new Error('rede'))),/rede/);
+});
