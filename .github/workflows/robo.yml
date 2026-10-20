@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      teste_telegram:
+        description: 'Enviar uma mensagem de teste ao Telegram'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -42,6 +47,7 @@ jobs:
           # opcionais: avisos no Telegram (veja robo/LEIA-ME.md)
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TEST: ${{ inputs.teste_telegram && '1' || '0' }}
         run: node server/run-bot.js robo/config.json estado/estado.json
 
       - name: Guardar o estado

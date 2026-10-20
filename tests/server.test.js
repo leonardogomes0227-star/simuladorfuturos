@@ -142,3 +142,23 @@ test('pesquisa: lê o resultado gravado ao lado do estado, só do mesmo interval
   fs.writeFileSync(path.join(dir,'pesquisa-15m.json'),'lixo');
   r=await run({...t,fetchImpl:fetchOk,now:nowFor(330)});assert.equal(r.meta.pesquisa,null);
 });
+
+test('teste do Telegram: avisa quando faltam credenciais, envia quando há e mostra o motivo do erro',async()=>{
+  N=300;const t=tmp(CONF);
+  let r=await run({...t,fetchImpl:fetchOk,now:nowFor(300),telegram:{token:'',chatId:'',test:true}});
+  assert.match(r.meta.telegramTest,/sem credenciais/);
+  const sent=[];
+  const ok=(u,o)=>/telegram/.test(u)?(sent.push(JSON.parse(o.body)),Promise.resolve({ok:true,status:200})):fetchOk(u);
+  r=await run({...t,fetchImpl:ok,now:nowFor(310),telegram:{token:'SEGREDO',chatId:'42',test:true}});
+  assert.equal(r.meta.telegramTest,'enviado');assert.equal(sent.length,1);
+  assert.equal(sent[0].chat_id,'42');assert.match(sent[0].text,/conectado ao Telegram/);assert.match(sent[0].text,/velas de 15m/);assert.match(sent[0].text,/SIMULAÇÃO/);
+  const bad=(u)=>/telegram/.test(u)?Promise.resolve({ok:false,status:401,json:()=>Promise.resolve({description:'Unauthorized'})}):fetchOk(u);
+  r=await run({...t,fetchImpl:bad,now:nowFor(320),telegram:{token:'SEGREDO',chatId:'42',test:true}});
+  assert.match(r.meta.telegramTest,/HTTP 401 \(Unauthorized\)/);
+  const boom=(u)=>/telegram/.test(u)?Promise.reject(new Error('falhou SEGREDO')):fetchOk(u);
+  r=await run({...t,fetchImpl:boom,now:nowFor(330),telegram:{token:'SEGREDO',chatId:'42',test:true}});
+  assert.ok(r.meta.telegramTest.startsWith('erro:')&&!r.meta.telegramTest.includes('SEGREDO'));
+  // sem o flag de teste, nada é enviado
+  r=await run({...t,fetchImpl:ok,now:nowFor(340),telegram:{token:'SEGREDO',chatId:'42'}});
+  assert.equal(r.meta.telegramTest,undefined);
+});
