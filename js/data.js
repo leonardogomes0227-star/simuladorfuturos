@@ -71,6 +71,26 @@ function fetchKlines(sym,tf,limit,fetchImpl){
   }
   return next();
 }
+// Preço e variação das últimas 24h de vários pares: {BTCUSDT: {price, change}} (change em %).
+function fetchTicker24h(symbols,fetchImpl){
+  fetchImpl=fetchImpl||fetch;
+  var list=symbols.filter(validSymbol);
+  if(!list.length)return Promise.resolve({});
+  var q='symbols='+encodeURIComponent(JSON.stringify(list)),i=0;
+  function next(err){
+    if(i>=HOSTS.length)return Promise.reject(err||new Error('Sem resposta'));
+    return fetchJson(HOSTS[i++]+'/api/v3/ticker/24hr?type=MINI&'+q,fetchImpl,8000).then(function(rows){
+      if(!Array.isArray(rows))throw new Error('Resposta inesperada');
+      var out={};
+      rows.forEach(function(r){
+        var p=r&&parseFloat(r.lastPrice),o=r&&parseFloat(r.openPrice);
+        if(r&&validSymbol(r.symbol)&&p>0)out[r.symbol]={price:p,change:o>0?(p/o-1)*100:0};
+      });
+      return out;
+    }).catch(next);
+  }
+  return next();
+}
 // Histórico longo: busca em páginas de 1000 velas entre startMs e endMs.
 function fetchKlinesRange(sym,tf,startMs,endMs,fetchImpl){
   fetchImpl=fetchImpl||fetch;
@@ -128,5 +148,5 @@ function fetchSymbols(fetchImpl){
 }
 
 return {TFS:TFS,POPULAR:POPULAR,MAX_CANDLES:MAX_CANDLES,validSymbol:validSymbol,normSymbol:normSymbol,parseKlines:parseKlines,klineFromWs:klineFromWs,
-  applyKline:applyKline,wsUrl:wsUrl,klinesUrl:klinesUrl,fetchKlines:fetchKlines,fetchKlinesRange:fetchKlinesRange,fetchPrices:fetchPrices,fetchSymbols:fetchSymbols};
+  applyKline:applyKline,wsUrl:wsUrl,klinesUrl:klinesUrl,fetchKlines:fetchKlines,fetchKlinesRange:fetchKlinesRange,fetchPrices:fetchPrices,fetchTicker24h:fetchTicker24h,fetchSymbols:fetchSymbols};
 });
