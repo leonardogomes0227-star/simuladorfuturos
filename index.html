@@ -25,6 +25,62 @@
     <button id="helpBtn" class="iconbtn" type="button" title="Atalhos de teclado (?)" aria-label="Atalhos de teclado">?</button>
   </header>
 
+  <nav class="tabs" aria-label="Telas">
+    <button id="tabBot" class="on" type="button">Robô</button>
+    <button id="tabManual" type="button">Mesa manual (gráfico)</button>
+  </nav>
+  <p id="msg" class="msg" role="status" aria-live="polite"></p>
+
+  <div id="viewBot">
+    <section class="card botstate" id="botHero" aria-label="Estado do robô"></section>
+    <div class="stats" id="botStats"></div>
+    <section class="card"><h2>Saldo do robô</h2><div id="botCurve"></div></section>
+    <section class="card"><h2>Posições abertas</h2><div id="botOpen"></div></section>
+    <section class="card"><h2>O que o robô fez</h2><div id="botHist"></div></section>
+
+    <details class="card" id="botCfgCard" open>
+      <summary><h2>Configurar o robô</h2></summary>
+      <p class="note" id="botLock"></p>
+      <div class="presetbar">
+        <label class="sel"><span>Estratégia</span><select id="bPreset"></select></label>
+        <label class="sel"><span>Intervalo das velas</span>
+          <select id="bTf"><option value="1m">1 min</option><option value="5m">5 min</option><option value="15m">15 min</option><option value="1h">1 hora</option><option value="4h">4 horas</option><option value="1d">1 dia</option></select></label>
+      </div>
+      <div>
+        <div class="note">Moedas que o robô acompanha (até 10)</div>
+        <div class="chips" id="bSyms"></div>
+        <div class="presetbar">
+          <input id="bSymAdd" class="sym" type="text" list="symlist" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Adicionar: SUI, DOGE…" aria-label="Adicionar moeda">
+          <button id="bSymAddBtn" class="btn" type="button">Adicionar</button>
+        </div>
+      </div>
+      <div class="fields">
+        <label>Capital do robô (USDT)<input id="bCapital" type="number" min="10" step="10"></label>
+        <label>Risco por operação (%)<input id="bRisk" type="number" min="0.1" max="5" step="0.1"></label>
+        <label>Alavancagem (x)<input id="bLev" type="number" min="1" max="20" step="1"></label>
+        <label>Máx. operações ao mesmo tempo<input id="bMaxOpen" type="number" min="1" max="10" step="1"></label>
+        <label>Limite de perda no dia (%)<input id="bDaily" type="number" min="0.5" max="20" step="0.5"></label>
+        <label>Taxa por lado (%)<input id="bFee" type="number" min="0" max="0.5" step="0.01"></label>
+        <label>Derrapagem por lado (%)<input id="bSlip" type="number" min="0" max="1" step="0.01"></label>
+      </div>
+      <label class="chk"><input type="checkbox" id="bNotify"><span>Avisar no aparelho quando o robô abrir ou fechar uma operação</span></label>
+      <div class="toolrow">
+        <button id="bCloseAll" class="btn" type="button">Encerrar posições abertas</button>
+        <button id="bReset" class="btn danger" type="button">Zerar robô</button>
+      </div>
+    </details>
+
+    <details class="card" id="botTestCard">
+      <summary><h2>Testar a estratégia antes de ligar</h2></summary>
+      <p class="note">Roda cada estratégia nas últimas 1.000 velas das moedas escolhidas. É uma amostra curta: serve para descartar o que claramente não funciona, não para provar que algo funciona.</p>
+      <div class="toolrow"><button id="bTestBtn" class="btn primary" type="button">Testar agora</button></div>
+      <div id="bTestOut"></div>
+    </details>
+
+    <section class="card" id="botReady"></section>
+  </div>
+
+  <div id="viewManual" hidden>
   <div class="bar">
     <div class="seg" role="group" aria-label="Nível de detalhe">
       <button id="modeSimple" class="on" type="button">Iniciante</button>
@@ -53,7 +109,6 @@
   </div>
   <p id="modeHint" class="mode-hint"></p>
   <p id="srcNote" class="note"></p>
-  <p id="msg" class="msg" role="status" aria-live="polite"></p>
 
   <section class="card quick" id="quick" aria-label="Resposta rápida"></section>
 
@@ -195,6 +250,8 @@
     <ul class="list" id="howList"></ul>
   </details>
 
+  </div>
+
   <details class="card">
     <summary><h2>Dados e backup</h2></summary>
     <p class="note">Tudo fica salvo só neste navegador. Se você limpar os dados do navegador, perde o diário. Faça backup de vez em quando.</p>
@@ -233,6 +290,7 @@
 <script src="js/engine.js"></script>
 <script src="js/metrics.js"></script>
 <script src="js/data.js"></script>
+<script src="js/bot.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
