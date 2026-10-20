@@ -32,6 +32,8 @@ O robô pode te avisar quando surgir um sinal novo ou quando uma operação fech
 2. Mande uma mensagem qualquer para o seu bot novo. Depois abra `https://api.telegram.org/bot<TOKEN>/getUpdates` e copie o número em `"chat":{"id":...}`.
 3. No GitHub: **Settings → Secrets and variables → Actions → New repository secret**. Crie `TELEGRAM_BOT_TOKEN` (o token) e `TELEGRAM_CHAT_ID` (o número).
 
+4. **Teste na hora**: em Actions → *Robô 24h* → Run workflow, marque **Enviar uma mensagem de teste ao Telegram** e rode. A mensagem chega em segundos; o log da execução diz `TESTE DO TELEGRAM: enviado` ou o motivo do erro (por exemplo, segredo faltando ou token errado). Antes de testar, abra o seu bot no Telegram e toque em **Iniciar** (`/start`), senão o Telegram não deixa o bot escrever para você.
+
 Enquanto o robô estiver em simulação, todo aviso vem marcado como **SIMULAÇÃO**. O GitHub pode atrasar as rodadas agendadas em algumas horas; por isso o aviso diz até onde o preço ainda vale a entrada.
 
 ## Validação em anos de dados reais

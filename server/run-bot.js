@@ -49,6 +49,26 @@ function readPesquisa(statePath, tf) {
     oosN: j.oos.n, oosAvgR: j.oos.avgR, oosPf: isFinite(j.oos.pf) ? j.oos.pf : null, coins: (j.coins || []).length };
 }
 
+// Mensagem de teste (workflow manual com "teste_telegram"): confirma que o token e o chat estão certos.
+async function telegramTest(tg, st, fetchImpl) {
+  if (!tg || !tg.token || !tg.chatId) return 'sem credenciais: crie os segredos TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID';
+  const text = '✅ Radar de Futuros conectado ao Telegram.\nRobô ' + (st.running ? 'ligado' : 'desligado') + ' · velas de ' + st.cfg.tf + ' · ' + st.cfg.syms.join(', ') +
+    '\n' + Bot.closedTrades(st).length + ' operações fechadas, ' + Bot.openTrades(st).length + ' abertas.\nVocê receberá um aviso quando o robô abrir ou fechar uma operação. Por enquanto tudo é SIMULAÇÃO.';
+  try {
+    const res = await fetchImpl('https://api.telegram.org/bot' + tg.token + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: tg.chatId, text })
+    });
+    if (!res.ok) {
+      let why = '';
+      try { why = (await res.json()).description || ''; } catch (e) { /* sem corpo */ }
+      return 'erro: o Telegram respondeu HTTP ' + res.status + (why ? ' (' + why + ')' : '');
+    }
+    return 'enviado';
+  } catch (e) {
+    return 'erro: ' + String(e.message || e).replace(tg.token, '***');
+  }
+}
+
 async function run({ configPath, statePath, fetchImpl, now, telegram }) {
   now = now || Date.now();
   const file = readJson(statePath) || {};
@@ -65,6 +85,7 @@ async function run({ configPath, statePath, fetchImpl, now, telegram }) {
   }
 
   meta.errors = [];
+  delete meta.telegramTest; // vale só para a rodada que pediu o teste
   if (st.running) {
     const syms = st.cfg.syms, tf = st.cfg.tf;
     const res = await Promise.all(syms.map((sym) =>
@@ -83,6 +104,7 @@ async function run({ configPath, statePath, fetchImpl, now, telegram }) {
       meta.net = 'off';
     }
   }
+  if (telegram && telegram.test) meta.telegramTest = await telegramTest(telegram, st, fetchImpl);
   meta.pesquisa = readPesquisa(statePath, st.cfg.tf);
   meta.lastRun = now;
   meta.runs += 1;
@@ -101,12 +123,13 @@ if (require.main === module) {
     console.error('Uso: node server/run-bot.js <config.json> <estado.json>');
     process.exit(2);
   }
-  const telegram = { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID };
+  const telegram = { token: process.env.TELEGRAM_BOT_TOKEN, chatId: process.env.TELEGRAM_CHAT_ID, test: process.env.TELEGRAM_TEST === '1' };
   run({ configPath, statePath, fetchImpl: fetch, telegram }).then(({ st, meta }) => {
     const open = Bot.openTrades(st).length, closed = Bot.closedTrades(st).length;
     console.log(`robô ${st.running ? 'ligado' : 'desligado'} · rede: ${meta.net || '-'} · ${closed} fechadas, ${open} abertas · saldo ${Bot.balance(st).toFixed(2)}`);
     if (meta.configError) console.log('ATENÇÃO configuração: ' + meta.configError);
     meta.errors.forEach((e) => console.log('ATENÇÃO dados: ' + e));
+    if (meta.telegramTest) console.log('TESTE DO TELEGRAM: ' + meta.telegramTest);
     if (meta.notify && (meta.notify.sent || meta.notify.error)) console.log('Telegram: ' + meta.notify.sent + ' aviso(s) enviado(s)' + (meta.notify.error ? ' · ERRO: ' + meta.notify.error : ''));
   }).catch((e) => { console.error(e); process.exit(1); });
 }
