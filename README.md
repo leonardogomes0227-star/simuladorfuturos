@@ -2,7 +2,7 @@
 
 Simulador **educacional** de futuros. Mostra um sinal por regras (tendência, força, RSI, rompimento e volume), calcula o tamanho da posição pelo risco, registra um diário de operações simuladas e testa a estratégia no histórico. **Não envia ordens e não usa dinheiro real.**
 
-Site estático, sem build e sem dependências. Abra `index.html` por um servidor local (`npm run serve`) ou publique no GitHub Pages.
+Site estático, sem build e sem dependências. Abra `index.html` por um servidor local (`npm run serve`) ou publique em qualquer hospedagem estática.
 
 ## O que tem
 
@@ -33,10 +33,9 @@ Estrutura:
 | `js/app.js` | Interface e estado |
 | `sw.js` | Cache offline. **Mude `VERSION` a cada publicação.** |
 
-## Publicar no GitHub Pages
+## Publicação
 
-1. No repositório: **Settings → Pages → Source: GitHub Actions**.
-2. Todo push na `main` roda os testes e publica (`.github/workflows/pages.yml`).
+O site é estático (sem build) e está na Vercel: todo merge na branch padrão publica sozinho. Qualquer hospedagem estática serve (GitHub Pages, Netlify). O workflow `.github/workflows/test.yml` roda os testes a cada push.
 
 ## Dados e privacidade
 
