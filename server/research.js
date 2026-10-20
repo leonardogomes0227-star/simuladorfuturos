@@ -15,9 +15,10 @@ const COSTS = { fee: 0.05, slip: 0.02 }; // % por lado, iguais aos do robô
 function buildGrid() {
   const mgmt = [{ beR: 0, trailAtr: 0 }, { beR: 1, trailAtr: 0 }, { beR: 1, trailAtr: 2.5 }];
   const out = [];
-  [4, 5].forEach((minScore) => [20, 25].forEach((adxMin) => [1.5, 2.5].forEach((stopAtr) => [2, 3].forEach((rr) => [0, 200].forEach((trendP) => mgmt.forEach((m) => {
-    out.push(E.normParams(Object.assign({ minScore, adxMin, stopAtr, rr, trendP }, m)));
-  }))))));
+  // htf: 0 = sem confirmação; 1 = só opera a favor da tendência do intervalo maior (exige dados do intervalo maior)
+  [4, 5].forEach((minScore) => [20, 25].forEach((adxMin) => [1.5, 2.5].forEach((stopAtr) => [2, 3].forEach((rr) => [0, 200].forEach((trendP) => [0, 1].forEach((htf) => mgmt.forEach((m) => {
+    out.push(E.normParams(Object.assign({ minScore, adxMin, stopAtr, rr, trendP, htf }, m)));
+  })))))));
   return out;
 }
 
@@ -26,10 +27,10 @@ function lowerBound(cs, t) {
   while (lo < hi) { const mid = (lo + hi) >> 1; if (cs[mid].t < t) lo = mid + 1; else hi = mid; }
   return lo;
 }
-function indKey(P) { return [P.emaF, P.emaM, P.emaS, P.trendP].join('|'); }
+function indKey(P) { return [P.emaF, P.emaM, P.emaS, P.trendP, P.htf].join('|'); }
 function getInd(ds, P) {
   const k = indKey(P);
-  if (!ds.inds[k]) ds.inds[k] = E.computeIndicators(ds.cs, P);
+  if (!ds.inds[k]) ds.inds[k] = E.computeIndicators(ds.cs, P, P.htf ? ds.htf : null);
   return ds.inds[k];
 }
 
@@ -126,7 +127,7 @@ function finalSelection(datasets, grid, ms, costs, minTrades) {
 function fmtDate(t) { return new Date(t).toISOString().slice(0, 10); }
 function f2(n) { return isFinite(n) ? n.toFixed(2) : '∞'; }
 function row(s) { return s.n + ' ops · acerto ' + s.winRate.toFixed(0) + '% · ' + (s.totalR >= 0 ? '+' : '') + f2(s.totalR) + 'R · média ' + (s.avgR >= 0 ? '+' : '') + s.avgR.toFixed(3) + 'R · FL ' + f2(s.pf) + ' · queda ' + f2(s.maxDD) + 'R'; }
-function pstr(P) { return 'pontos ' + P.minScore + ', ADX ' + P.adxMin + ', stop ' + P.stopAtr + 'ATR, alvo ' + P.rr + 'x, tendência ' + (P.trendP || 'off') + ', breakeven ' + (P.beR || 'off') + ', trailing ' + (P.trailAtr || 'off'); }
+function pstr(P) { return 'pontos ' + P.minScore + ', ADX ' + P.adxMin + ', stop ' + P.stopAtr + 'ATR, alvo ' + P.rr + 'x, tendência ' + (P.trendP || 'off') + ', breakeven ' + (P.beR || 'off') + ', trailing ' + (P.trailAtr || 'off') + ', intervalo maior ' + (P.htf ? 'on' : 'off'); }
 
 function report(datasets, wf, v, finals) {
   const L = [];
@@ -164,7 +165,15 @@ async function main() {
     try {
       const cs = await D.fetchKlinesRange(sym, tf, start, end, fetch);
       console.log(sym + ': ' + cs.length + ' velas');
-      if (cs.length > 2000) datasets.push({ sym, tf, cs, inds: {} });
+      let htf = null;
+      const mTf = D.macroTf(tf);
+      if (mTf) {
+        // um pouco de histórico a mais para a média de 50 velas do intervalo maior já estar pronta no começo
+        const warm = Math.max(120 * DAY, 70 * D.TFS[mTf]);
+        htf = await D.fetchKlinesRange(sym, mTf, start - warm, end, fetch);
+        console.log(sym + ' (' + mTf + '): ' + htf.length + ' velas do intervalo maior');
+      }
+      if (cs.length > 2000) datasets.push({ sym, tf, cs, htf, inds: {} });
     } catch (e) { console.log(sym + ': falhou (' + e.message + ')'); }
   }
   if (datasets.length < 2) { console.log('Dados insuficientes para pesquisar.'); process.exit(1); }

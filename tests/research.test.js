@@ -7,8 +7,9 @@ const mkSets=(n=5200)=>[[11,95000],[23,3400],[37,180],[41,20]].map(([seed,base],
 const small=()=>[E.normParams({}),E.normParams({minScore:5,adxMin:25}),E.normParams({minScore:3,adxMin:15,rr:1.5}),E.normParams({trendP:100,beR:1})];
 
 test('buildGrid: tamanho fixo, valores válidos e sem repetição',()=>{
-  const g=R.buildGrid();assert.equal(g.length,96);
-  assert.equal(new Set(g.map(p=>JSON.stringify(p))).size,96);
+  const g=R.buildGrid();assert.equal(g.length,192);
+  assert.equal(new Set(g.map(p=>JSON.stringify(p))).size,192);
+  assert.equal(g.filter(p=>p.htf===1).length,96,'metade usa o intervalo maior');
   g.forEach(p=>{assert.ok(p.minScore>=3&&p.rr>=0.5)});
 });
 
@@ -76,4 +77,17 @@ test('finalSelection e relatório rodam e descrevem tudo em português',()=>{
   fin.forEach(x=>{assert.equal(x.quarters.length,4);assert.ok(x.positiveQuarters>=0&&x.positiveQuarters<=4)});
   const txt=R.report(ds,wf,v,fin);
   assert.match(txt,/Pesquisa walk-forward/);assert.match(txt,/Veredito: (NÃO )?RECOMENDADA/);assert.match(txt,/TESTE/);
+});
+
+test('pesquisa com intervalo maior: combinações com htf só barram operações e nunca criam',()=>{
+  const agg=(cs,k)=>{const out=[];for(let i=0;i+k<=cs.length;i+=k){const g=cs.slice(i,i+k);out.push({t:g[0].t,o:g[0].o,h:Math.max(...g.map(x=>x.h)),l:Math.min(...g.map(x=>x.l)),c:g[g.length-1].c,v:g.reduce((a,x)=>a+x.v,0)})}return out};
+  const ds=mkSets(7000).map(d=>({...d,htf:agg(d.cs,16),inds:{}})),t0=ds[0].cs[0].t,t1=t0+7000*STEP;
+  const off=R.evalRange(ds,E.normParams({htf:0}),t0+2000*STEP,t1,R.COSTS),on=R.evalRange(ds,E.normParams({htf:1}),t0+2000*STEP,t1,R.COSTS);
+  assert.ok(off.s.n>0);assert.ok(on.s.n<=off.s.n,'o filtro reduz operações: '+on.s.n+' <= '+off.s.n);
+  // sem dados do intervalo maior, a combinação com htf não opera (falha segura)
+  const semHtf=mkSets(7000);
+  assert.equal(R.evalRange(semHtf,E.normParams({htf:1}),t0+2000*STEP,t1,R.COSTS).s.n,0);
+  // walk-forward roda com o filtro na grade
+  const wf=R.walkForward(ds,{trainMs:2000*STEP,testMs:800*STEP,stepMs:800*STEP,minTrades:15,grid:[E.normParams({}),E.normParams({htf:1})]});
+  assert.ok(wf.windows.length>=3);assert.equal(wf.grid.combos,2);
 });

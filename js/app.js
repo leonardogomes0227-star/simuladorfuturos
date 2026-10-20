@@ -1,7 +1,7 @@
 // Interface do Radar de Futuros. Usa RadarEngine (cálculo), RadarMetrics (diário e risco) e RadarData (Binance).
 (function(){
 'use strict';
-var E=window.RadarEngine,M=window.RadarMetrics,D=window.RadarData;
+var E=window.RadarEngine,M=window.RadarMetrics,D=window.RadarData,Rd=window.RadarRadar,Narr=window.RadarNarrativa;
 var $=function(id){return document.getElementById(id)};
 
 var KEY='radar-futuros-v2',OLD_KEY='radar-futuros-v1',MODE_KEY='radar-modo',THEME_KEY='radar-tema',USE_KEY='radar-uso';
@@ -225,7 +225,7 @@ function setLiveStatus(state,txt){
 function stopLive(){
   var l=S.live;
   if(l.ws){l.ws.onopen=l.ws.onmessage=l.ws.onerror=l.ws.onclose=null;try{l.ws.close()}catch(e){}l.ws=null}
-  clearInterval(l.poll);l.poll=null;clearTimeout(l.retry);l.retry=null;
+  clearInterval(l.poll);l.poll=null;clearTimeout(l.retry);l.retry=null;clearInterval(l.recon);l.recon=null;
 }
 function leaveLive(){S.live.tok++;stopLive();setLiveStatus('','')}
 function onTick(){
@@ -242,7 +242,7 @@ function mergeKlines(cs){cs.forEach(function(k){if(D.applyKline(S.all,k)==='appe
 function pollOnce(limit){
   var tok=S.live.tok,sym=S.liveSym,tf=S.tf;
   D.fetchKlines(sym,tf,limit||3).then(function(cs){if(tok!==S.live.tok)return;mergeKlines(cs);if(S.live.state==='off')setLiveStatus('poll','Atualizando a cada 5 s');onTick()})
-   .catch(function(){if(tok===S.live.tok)setLiveStatus('off','Sem conexão')});
+   .catch(function(e){if(tok===S.live.tok)setLiveStatus('off',Narr.friendlyError(e&&e.message).kind==='blocked'?'Binance recusou o acesso':'Sem conexão com a Binance')});
 }
 function startPoll(){
   if(S.live.poll)return;
@@ -258,7 +258,11 @@ function openWs(){
   ws.onmessage=function(ev){
     if(tok!==S.live.tok)return;
     var k=D.klineFromWs(ev.data);if(!k)return;
-    if(D.applyKline(S.all,k)==='append'&&S.off>0)S.off++;
+    var prev=S.all[S.all.length-1];
+    if(D.applyKline(S.all,k)==='append'){
+      if(S.off>0)S.off++;
+      if(prev&&k.t-prev.t>D.TFS[S.tf]*1.5)pollOnce(200); // pulou velas (conexão caiu e voltou): busca o que faltou
+    }
     onTick();
   };
   ws.onerror=function(){};
@@ -277,12 +281,14 @@ function connectLive(sym,tf,boot){
     stopLive();
     S.src='live';S.liveSym=sym;S.tf=tf;S.all=cs;S.candles=cs;resetView();
     refresh();evaluateOpen();save();renderAll();openWs();
+    // a cada minuto confere as últimas velas com a Binance, mesmo com o WebSocket ligado (corrige mensagem perdida)
+    S.live.recon=setInterval(function(){if(S.src==='live'&&!document.hidden)pollOnce(3)},60000);
     say(boot?'':'Dados ao vivo de '+sym+' carregados.');track('live');
   }).catch(function(err){
     if(tok!==S.live.tok)return;
     $('symLive').value=S.liveSym;$('tf').value=S.tf;
-    if(S.src==='live'){setLiveStatus(S.live.ws?'live':'poll',S.live.ws?'Ao vivo':'Atualizando a cada 5 s');say('Não consegui carregar '+sym+': '+err.message+'.')}
-    else{setLiveStatus('off','Sem dados ao vivo');say('Não consegui acessar a Binance ('+err.message+'). Seguindo com dados simulados.');renderAll()}
+    if(S.src==='live'){setLiveStatus(S.live.ws?'live':'poll',S.live.ws?'Ao vivo':'Atualizando a cada 5 s');say('Não consegui carregar '+sym+'. '+Narr.friendlyError(err.message).text)}
+    else{setLiveStatus('off','Sem dados ao vivo');say('Não consegui acessar a Binance. '+Narr.friendlyError(err.message).text+' Seguindo com dados simulados.');renderAll()}
   });
 }
 function useDemo(){
@@ -1037,7 +1043,7 @@ function renderBotHero(){
     '<button id="bToggle" class="btn big '+(run?'':'primary')+'" type="button">'+(run?'Pausar robô':'Ligar robô')+'</button></div>';
   if(run){
     h+='<p class="qtext">Rodando desde '+fmtDate(B.startedAt)+' · última checagem '+(B.lastRun?'há '+fmtDur(Date.now()-B.lastRun):'ainda não aconteceu')+'. Acompanhando '+esc(B.cfg.syms.join(', '))+' em velas de '+esc(B.cfg.tf)+' com a estratégia '+esc(presetName(B.cfg.presetId))+'.</p>';
-    if(botNet==='off')h+='<div class="warnbox">Não consegui falar com a Binance na última checagem. Ele tenta de novo sozinho e recupera as velas perdidas.</div>';
+    if(botNet==='off')h+='<div class="warnbox">Sem conexão com a Binance na última checagem. Ele tenta de novo sozinho e recupera as velas perdidas.</div>';
     else if(botNet==='part')h+='<div class="warnbox">Algumas moedas não responderam na última checagem. Elas serão recuperadas na próxima.</div>';
     h+='<p class="qfoot">Ele decide só quando uma vela fecha. Se você fechar esta aba, ele para; ao reabrir, recupera tudo o que perdeu pelo histórico da Binance (até 500 velas) e confere stops e alvos vela por vela.</p>';
   }else{
@@ -1064,16 +1070,24 @@ function renderBot(){
   else $('botOpen').innerHTML='<div class="tablewrap"><table><thead><tr><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Stop</th><th class="r">Alvo</th><th class="r">Preço</th><th class="r">Resultado agora</th><th class="l">Por que entrou</th></tr></thead><tbody>'+
     open.map(function(t){var u=Bot.unrealized(B,t);return '<tr><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r neg">'+fmtPrice(t.stop)+'</td><td class="r pos">'+fmtPrice(t.target)+'</td><td class="r">'+fmtPrice(B.prices[t.sym])+'</td><td class="r '+sgn(u)+'">'+(isFinite(u)?fmtSigned(u):'–')+'</td><td class="l why">'+esc(t.reasons.join('; '))+'</td></tr>'}).join('')+'</tbody></table></div>';
 
-  var cl=Bot.closedTrades(B).slice().sort(function(a,b){return b.closedAt-a.closedAt}).slice(0,12),h='';
-  if(!cl.length)h='<div class="empty">Quando o robô fechar operações, elas aparecem aqui.</div>';
-  else h='<div class="tablewrap"><table><thead><tr><th class="l">Fechada em</th><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Resultado</th><th class="r">R</th><th class="l">Saída por</th></tr></thead><tbody>'+
-    cl.map(function(t){return '<tr><td class="l">'+fmtDate(t.closedAt)+'</td><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r">'+fmtPrice(t.exit)+'</td><td class="r '+sgn(t.pnl)+'">'+fmtSigned(t.pnl)+'</td><td class="r">'+(t.risk>0?fmtSigned(t.pnl/t.risk):'–')+'</td><td class="l">'+esc(t.reason)+'</td></tr>'}).join('')+'</tbody></table></div>';
-  if(Bot.closedTrades(B).length>12)h+='<p class="note">Mostrando as 12 mais recentes de '+Bot.closedTrades(B).length+'.</p>';
-  if(B.log.length)h+='<ul class="list">'+B.log.slice(-5).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
-  $('botHist').innerHTML=h;
+  $('botHist').innerHTML=botHistHtml();
   if(botMode==='local')renderBotCfg();
   else renderServerCfg();
   renderBotReady();
+}
+// "O que o robô fez": cada entrada e saída contada em frases simples; a tabela técnica fica atrás de um botão.
+function botHistHtml(){
+  var tl=Narr.timeline(B.trades,14),now=Date.now(),h='';
+  if(!tl.length)h='<div class="empty">'+(B.running?'Nenhuma operação ainda. O robô está vigiando o mercado e só entra quando todos os critérios de segurança passam.':'Quando o robô entrar ou sair de uma operação, a história aparece aqui em linguagem simples.')+'</div>';
+  else h='<ol class="timeline">'+tl.map(function(e){
+    var why=e.why&&e.why.length?'<details><summary class="note">Por que entrou</summary><ul class="list">'+e.why.map(function(w){return '<li>'+esc(w)+'</li>'}).join('')+'</ul></details>':'';
+    return '<li class="tl-item '+(e.tone||'')+'"><span class="tl-ico" aria-hidden="true">'+e.icon+'</span><div><div class="tl-title">'+esc(e.title)+' <span class="note">há '+fmtDur(now-e.at)+'</span></div><p class="tl-text">'+esc(e.text)+'</p>'+why+'</div></li>';
+  }).join('')+'</ol>';
+  var cl=Bot.closedTrades(B).slice().sort(function(a,b){return b.closedAt-a.closedAt}).slice(0,25);
+  if(cl.length)h+='<details><summary class="note">Ver tabela completa das últimas operações</summary><div class="tablewrap"><table><thead><tr><th class="l">Fechada em</th><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Resultado</th><th class="r">R</th><th class="l">Saída por</th></tr></thead><tbody>'+
+    cl.map(function(t){return '<tr><td class="l">'+fmtDate(t.closedAt)+'</td><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r">'+fmtPrice(t.exit)+'</td><td class="r '+sgn(t.pnl)+'">'+fmtSigned(t.pnl)+'</td><td class="r">'+(t.risk>0?fmtSigned(t.pnl/t.risk):'–')+'</td><td class="l">'+esc(t.reason)+'</td></tr>'}).join('')+'</tbody></table></div></details>';
+  if(B.log.length)h+='<h2>Avisos do robô</h2><ul class="friendly-log">'+B.log.slice(-5).reverse().map(function(x){return '<li>'+esc(Narr.friendlyLog(x))+'</li>'}).join('')+'</ul>';
+  return h;
 }
 function renderBotCfg(){
   var lockAll=B.running,lockStruct=botLocked(),sel=$('bPreset'),opts=presetList().map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>'}).join('');
@@ -1179,7 +1193,7 @@ function bindBot(){
 
 
 /* ---------- tela Hoje ---------- */
-var Hoje=window.RadarHoje,HOJE_KEY='radar-hoje-v1',hj={capital:0,cur:'BRL',risk:0.5,lev:1,fx:0},hjPrices={},hjChg={},hjAt=0,hjTimer=null,hjBusy=false,hjMini={},hjMiniBusy={};
+var Hoje=window.RadarHoje,HOJE_KEY='radar-hoje-v1',hj={capital:0,cur:'BRL',risk:0.5,lev:1,fx:0},hjPrices={},hjChg={},hjAt=0,hjTimer=null,hjBusy=false,hjMini={},hjMiniBusy={},hjRadar={},hjRadarBusy=false,hjRadarAt=0,hjRadarTimer=null;
 var ICON={
   go:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.2 9.4"/></svg>',
   wait:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 2"/></svg>',
@@ -1214,8 +1228,67 @@ function refreshHoje(){
   }).catch(function(){}).then(function(){hjBusy=false;if(S.view==='hoje')renderHoje()});
 }
 function syncHojeTimer(){
-  clearInterval(hjTimer);hjTimer=null;
-  if(S.view==='hoje'){refreshHoje();hjTimer=setInterval(function(){if(!document.hidden)refreshHoje()},20000)}
+  clearInterval(hjTimer);hjTimer=null;clearInterval(hjRadarTimer);hjRadarTimer=null;
+  if(S.view==='hoje'){
+    refreshHoje();loadRadar();
+    hjTimer=setInterval(function(){if(!document.hidden)refreshHoje()},20000);
+    hjRadarTimer=setInterval(function(){if(!document.hidden)loadRadar()},60000);
+  }
+}
+// Analisa cada moeda do robô (intervalo base + intervalo maior), só com velas fechadas, e monta o semáforo.
+function loadRadar(){
+  if(!R||hjRadarBusy)return;
+  var st=R.st,tf=st.cfg.tf,mTf=D.macroTf(tf),syms=st.cfg.syms.slice();
+  hjRadarBusy=true;
+  Promise.all(syms.map(function(sym){
+    var pb=D.fetchKlines(sym,tf,400),ph=mTf?D.fetchKlines(sym,mTf,400).catch(function(){return null}):Promise.resolve(null);
+    return Promise.all([pb,ph]).then(function(r){return {sym:sym,base:r[0],htf:r[1]}}).catch(function(e){return {sym:sym,error:e.message}});
+  })).then(function(list){
+    var now=Date.now();
+    list.forEach(function(x){
+      if(x.error){hjRadar[x.sym]={sym:x.sym,error:x.error,at:now};return}
+      var a=Rd.analyze({sym:x.sym,tf:tf,htfTf:mTf,base:x.base,htf:x.htf||[],params:st.params,now:now});a.at=now;hjRadar[x.sym]=a;
+    });
+    hjRadarBusy=false;hjRadarAt=now;if(S.view==='hoje')renderHoje();
+  });
+}
+function lampHtml(color,title){
+  return '<div class="hj-lamp"><div class="tl" data-c="'+color+'" role="img" aria-label="Semáforo do mercado: '+esc(title)+'"><i class="r"></i><i class="y"></i><i class="g"></i></div><div class="tl-cap">Mercado agora<b>'+esc(title)+'</b></div></div>';
+}
+function miniLamp(color){return '<span class="tl mini-tl" data-c="'+color+'" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i></span>'}
+function radarRow(a){
+  var t=a.traffic,s=a.signal,chips=[];
+  if(isFinite(s.adx))chips.push('<span class="rd-chip">ADX '+Math.round(s.adx)+'</span>');
+  if(a.macro)chips.push('<span class="rd-chip '+(a.macro.bias===1?'up':(a.macro.bias===-1?'down':''))+'">'+esc(a.macro.tf)+': '+(a.macro.bias===1?'▲ alta':(a.macro.bias===-1?'▼ baixa':'◆ lateral'))+'</span>');
+  if(isFinite(s.rsi))chips.push('<span class="rd-chip">RSI '+Math.round(s.rsi)+'</span>');
+  var crit=s.checks.length?'<ul class="crit">'+s.checks.map(function(c){
+    var k=c.ok?'ok':(c.required?'no':'opt');
+    return '<li><span class="ck '+k+'">'+(c.ok?'✓':(c.required?'✕':'–'))+'</span><span class="cl">'+esc(c.label)+'<small>'+esc(c.detail)+'</small></span></li>';
+  }).join('')+'</ul>':'';
+  var foot='<div class="rd-foot">'+(a.closedAt?'Análise da vela fechada às '+fmtDate(a.closedAt).slice(-5)+' · ':'')+'próxima vela fecha em '+Rd.countdown(a.nextCloseAt-Date.now())+' · '+(a.health.ok?'dados em dia':esc(a.health.reason))+'</div>';
+  return '<details class="rd-row"><summary>'+miniLamp(t.color)+'<span class="rd-coin">'+esc(a.sym.replace(/USDT$/,''))+'</span><div class="rd-main"><div class="rd-title">'+esc(t.title)+'</div><div class="rd-reason">'+esc(t.reason)+'</div></div><div class="rd-chips">'+chips.join('')+'</div></summary><div class="rd-body">'+crit+foot+'</div></details>';
+}
+function radarSummary(){
+  var ok=[];Object.keys(hjRadar).forEach(function(k){if(!hjRadar[k].error)ok.push(hjRadar[k])});
+  return ok.length?Rd.summary(ok):null;
+}
+function renderRadar(){
+  var el=$('hjRadar');
+  if(!R){el.innerHTML='';return}
+  var st=R.st,items=st.cfg.syms.map(function(x){return hjRadar[x]}).filter(Boolean),sum=radarSummary();
+  if(!items.length){el.innerHTML='<div class="radar-head"><h2>Radar do mercado</h2><span class="note">Analisando as moedas…</span></div><div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div>';return}
+  var h='<div class="radar-head"><h2>Radar do mercado</h2><span class="note">'+esc(sum?sum.text:'Não consegui analisar as moedas agora.')+'</span></div><div class="radar-list">';
+  items.forEach(function(a){
+    if(a.error){var fe=Narr.friendlyError(a.error);h+='<div class="rd-row"><div class="rd-sum">'+miniLamp('red')+'<div class="rd-main"><div class="rd-title">'+esc(a.sym.replace(/USDT$/,''))+': sem dados agora</div><div class="rd-reason">'+esc(fe.text)+'</div></div></div></div>'}
+    else h+=radarRow(a);
+  });
+  h+='</div><p class="note">Sinais só aparecem depois que a vela fecha ('+esc(st.cfg.tf)+')'+(D.macroTf(st.cfg.tf)?' e '+(st.params.htf?'precisam da confirmação do intervalo maior ('+esc(D.macroTf(st.cfg.tf))+')':'mostram o intervalo maior ('+esc(D.macroTf(st.cfg.tf))+') como contexto'):'')+'. Toque numa moeda para ver cada critério.</p>';
+  el.innerHTML=h;
+}
+function nextCloseAny(){
+  var now=Date.now(),tfMs=D.TFS[R.st.cfg.tf],best=0;
+  Object.keys(hjRadar).forEach(function(k){if(hjRadar[k].nextCloseAt>now&&(!best||hjRadar[k].nextCloseAt<best))best=hjRadar[k].nextCloseAt});
+  return best||(Math.floor(now/tfMs)+1)*tfMs;
 }
 var STATE_TXT={valid:['Dentro da janela de entrada','ok'],late:['Passou do ponto: não entre','warn'],old:['Sinal velho: ignore','warn'],running:['Já em andamento: não entre agora','warn'],stopped:['Stop atingido: ignore','bad'],target:['Alvo atingido: ignore','warn'],'sem-preco':['Sem preço agora','warn']};
 
@@ -1269,6 +1342,8 @@ function renderHojeTicker(){
   }).join('');
 }
 var hjAdvice=null;
+function rrClass(rr,prefix){return (prefix||'')+(rr>=3?'good':(rr>=2?'mid':'bad'))}
+function rrChip(rr){return '<span class="rr-chip '+rrClass(rr)+'" title="Quanto você pode ganhar para cada 1 que arrisca">'+'<small>Risco/retorno</small>'+f1(rr)+' : 1</span>'}
 function renderHojeSignals(){
   var a=hjAdvice,now=Date.now();if(!a||!R)return;
   var tf=R.st.cfg.tf,sg='<h2>Sinais do robô</h2>';
@@ -1277,13 +1352,13 @@ function renderHojeSignals(){
     var t=x.trade,long=t.side==='long',st=STATE_TXT[x.status.state]||STATE_TXT.valid,ok=x.status.state==='valid',sz=x.size,dist=Math.abs(t.entry-t.stop),d0=t.dist0>0?t.dist0:dist;
     if(ok)loadMini(t.sym,tf);
     var mini=hjMini[t.sym+'|'+tf],chart=ok&&mini&&mini.cs?miniChart(mini.cs,t,x.price):'';
-    sg+='<div class="sigcard '+(ok?t.side:'ignore')+'"><div class="sigtop"><span class="chip-act">'+(long?'COMPRAR':'VENDER')+'</span><span class="sigtitle">'+esc(t.sym.replace(/USDT$/,''))+'<span class="note"> /USDT</span></span><span class="badge '+st[1]+'">'+st[0]+'</span><span class="note sigage">sinal de há '+ago(now-t.openedAt)+'</span></div>'+
+    sg+='<div class="sigcard '+(ok?t.side:'ignore')+'"><div class="sigtop"><span class="chip-act">'+(long?'COMPRAR':'VENDER')+'</span><span class="sigtitle">'+esc(t.sym.replace(/USDT$/,''))+'<span class="note"> /USDT</span></span><span class="badge '+st[1]+'">'+st[0]+'</span>'+rrChip(Math.abs(t.target-t.entry)/d0)+'<span class="note sigage">sinal de há '+ago(now-t.openedAt)+'</span></div>'+
       ladder(t,x.price,x.status)+
       '<div class="numgrid">'+
       '<div class="nbox"><span>Preço agora</span><b>'+(x.price?fmtPrice(x.price):'–')+'</b></div>'+
       '<div class="nbox"><span>Stop (limite da perda)</span><b class="neg">'+fmtPrice(t.stop)+'</b><small>'+f1(d0/t.entry*100)+'% do preço</small></div>'+
       '<div class="nbox"><span>Alvo (lucro)</span><b class="pos">'+fmtPrice(t.target)+'</b><small>+'+f1(Math.abs(t.target-t.entry)/t.entry*100)+'% do preço</small></div>'+
-      '<div class="nbox"><span>Retorno para risco</span><b>'+(isFinite(x.status.rr)?f1(x.status.rr)+' : 1':'–')+'</b><small>com o preço de agora</small></div></div>'+
+      '<div class="nbox '+rrClass(x.status.rr,'rr-')+'"><span>Retorno para risco</span><b>'+(isFinite(x.status.rr)?f1(x.status.rr)+' : 1':'–')+'</b><small>com o preço de agora</small></div></div>'+
       chart;
     if(ok){
       if(sz)sg+='<div class="howmuch">Com <b>'+money(hjCapUSDT())+'</b>, arriscando '+f1(hj.risk)+'%: '+(long?'compre ':'venda ')+'<b>'+fmtQty(sz.qty)+' '+esc(t.sym.replace(/USDT$/,''))+'</b> (≈ '+money(sz.notional)+'), alavancagem '+f1(sz.lev)+'x. Se bater o stop você perde ≈ <b class="neg">'+money(sz.riskUSD)+'</b>; se bater o alvo ganha ≈ <b class="pos">'+money(sz.rewardUSD)+'</b>.'+(sz.capped?' <span class="neg">Tamanho limitado pela alavancagem máxima: o risco real ficou em '+f1(sz.riskPct)+'%.</span>':'')+'</div>';
@@ -1296,7 +1371,7 @@ function renderHojeSignals(){
 }
 function renderHoje(){
   renderHojeTicker();
-  var vEl=$('hjVerdict');
+  var vEl=$('hjVerdict');if(!R)$('hjRadar').innerHTML='';
   if(!R){
     var msg=remoteErr==='404'?'O servidor ainda não gravou nada. Abra a aba Robô para ver como iniciar.':remoteErr==='net'?'Não consegui ler o estado do robô agora. Tento de novo em 1 minuto.':remoteErr==='config'?'Falta indicar o repositório em js/config.js.':'';
     vEl.className='card hj-verdict'+(msg?' tone-warn':'');
@@ -1306,15 +1381,16 @@ function renderHoje(){
   }
   var now=Date.now(),u={capital:hjCapUSDT(),riskPct:hj.risk,maxLev:hj.lev},a=Hoje.advise(R.st,R.meta,hjPrices,u,now);hjAdvice=a;
   var cfg={oportunidade:['HÁ OPORTUNIDADE','go','tone-go','go'],esperar:['ESPERAR','wait','','wait'],simular:['SÓ SIMULAR','warn','tone-warn','shield'],parar:['NÃO OPERAR HOJE','stop','tone-stop','stop'],desatualizado:['ESPERAR','warn','tone-warn','warn']}[a.code];
-  var h='<div class="hj-icon">'+ICON[cfg[3]]+'</div><div class="hj-body"><div class="hjword '+cfg[1]+'">'+cfg[0]+'</div><p class="hjreason">'+esc(a.reason)+'</p>';
+  var rsum=radarSummary(),lead=rsum?lampHtml(rsum.color,rsum.title):'<div class="hj-icon">'+ICON[cfg[3]]+'</div>';
+  var h=lead+'<div class="hj-body"><div class="hjword '+cfg[1]+'">'+cfg[0]+'</div><p class="hjreason">'+esc(a.reason)+'</p>'+(rsum?'<p class="note">Semáforo: '+esc(rsum.text)+'</p>':'');
   if(!a.ready){
     h+='<div class="gate"><div class="gate-top"><span>Trava de segurança</span><span>'+a.rd.passed+' de '+a.rd.checks.length+' critérios</span></div><div class="gatebar" role="img" aria-label="Progresso da trava de segurança"><span style="width:'+(a.rd.passed/a.rd.checks.length*100).toFixed(0)+'%"></span></div></div>'+
       '<ul class="list">'+a.rd.checks.filter(function(c){return !c.ok}).slice(0,3).map(function(c){return '<li>Falta: '+esc(c.label)+' ('+esc(c.detail)+')</li>'}).join('')+'</ul>';
   }else h+='<p class="note">O robô cumpriu os critérios no simulado. Mesmo assim: resultado passado não garante o futuro, comece pequeno e mantenha a alavancagem baixa.</p>';
   var lastRun=R.meta.lastRun||0;
-  h+='<div class="hj-chips"><span class="hj-chip">Robô conferiu '+(lastRun?'há '+ago(now-lastRun):'ainda não')+'</span>'+(hjAt?'<span class="hj-chip">Preços há '+Math.max(0,Math.round((now-hjAt)/1000))+' s</span>':'')+'<span class="hj-chip">Velas de '+esc(R.st.cfg.tf)+'</span><span class="hj-chip">Nenhuma ordem é enviada</span></div></div>';
-  vEl.className='card hj-verdict '+cfg[2];vEl.innerHTML=h;
-  renderHojeSignals();renderHojeMy(a);renderHojeRules();
+  h+='<div class="hj-chips"><span class="hj-chip">Robô conferiu '+(lastRun?'há '+ago(now-lastRun):'ainda não')+'</span>'+(hjAt?'<span class="hj-chip">Preços há '+Math.max(0,Math.round((now-hjAt)/1000))+' s</span>':'')+'<span class="hj-chip">Velas de '+esc(R.st.cfg.tf)+(D.macroTf(R.st.cfg.tf)?' + '+esc(D.macroTf(R.st.cfg.tf)):'')+'</span><span class="hj-chip" title="O robô só decide depois que a vela fecha oficialmente">Só vela fechada · próxima em <span class="countdown" id="hjCountdown" data-at="'+nextCloseAny()+'">'+Rd.countdown(nextCloseAny()-now)+'</span></span><span class="hj-chip">Nenhuma ordem é enviada</span></div></div>';
+  vEl.className='card hj-verdict '+cfg[2]+(rsum?' has-lamp':'');vEl.innerHTML=h;
+  renderRadar();renderHojeSignals();renderHojeMy(a);renderHojeRules();
 
   var sm=M.summarize(R.st.trades,R.st.cfg.capital),unreal=0;
   Bot.openTrades(R.st).forEach(function(t){var p=hjPrices[t.sym]||R.st.prices[t.sym];if(p)unreal+=(p-t.entry)*t.qty*(t.side==='long'?1:-1)});
@@ -1367,7 +1443,7 @@ function loadRemote(){
   fetch(u,{cache:'no-store'}).then(function(r){if(r.status===404)throw new Error('404');if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){
     if(!j||!j.state)throw new Error('formato');
     R={st:Bot.sanitize(j.state),meta:j.meta||{}};remoteErr='';
-  }).catch(function(e){remoteErr=e.message==='404'?'404':'net'}).then(function(){remoteBusy=false;if(S.view==='hoje')refreshHoje();else if(botMode==='server'&&S.view==='bot')renderBot()});
+  }).catch(function(e){remoteErr=e.message==='404'?'404':'net'}).then(function(){remoteBusy=false;if(S.view==='hoje'){refreshHoje();loadRadar()}else if(botMode==='server'&&S.view==='bot')renderBot()});
 }
 function syncRemoteTimer(){
   clearInterval(remoteTimer);remoteTimer=null;
@@ -1386,8 +1462,10 @@ function renderServerHero(){
   h='<div class="state"><div class="qword '+(run?'long':'wait')+'">SERVIDOR 24H '+(run?'LIGADO':'DESLIGADO')+'</div><a class="btn" target="_blank" rel="noopener" href="'+esc(ghUrl('edit',c.configPath||'robo/config.json'))+'">Editar configuração</a></div>';
   h+='<p class="qtext">'+(run?'Rodando no GitHub'+(st.startedAt?' desde '+fmtDate(st.startedAt):'')+' · última checagem '+(m.lastRun?'há '+fmtDur(age):'ainda não aconteceu')+'. Acompanhando '+esc(st.cfg.syms.join(', '))+' em velas de '+esc(st.cfg.tf)+' com a estratégia '+esc(presetName(st.cfg.presetId))+'.':'Desligado pela configuração ("ligado": false). Nenhuma checagem de mercado está sendo feita.')+'</p>';
   if(run&&age>25*60000)h+='<div class="warnbox">O servidor não checa há '+fmtDur(age)+'. O GitHub às vezes atrasa execuções agendadas. Se isso continuar, abra a aba Actions e veja se o "Robô 24h" está ativo.</div>';
-  if(m.net==='off')h+='<div class="warnbox">Na última checagem o servidor não conseguiu dados da Binance'+(m.errors&&m.errors[0]?' ('+esc(m.errors[0])+')':'')+'. Ele tenta de novo sozinho e recupera as velas perdidas.</div>';
-  else if(m.net==='part')h+='<div class="warnbox">Algumas moedas não responderam na última checagem'+(m.errors&&m.errors[0]?' ('+esc(m.errors[0])+')':'')+'. Serão recuperadas na próxima.</div>';
+  var fe=m.errors&&m.errors[0]?Narr.friendlyError(m.errors[0]).text:'';
+  if(m.net==='off')h+='<div class="warnbox">Na última checagem o servidor não conseguiu dados da Binance. '+esc(fe)+' Ele tenta de novo sozinho e recupera as velas perdidas.</div>';
+  else if(m.net==='part')h+='<div class="warnbox">Algumas moedas não responderam na última checagem. '+esc(fe)+' Serão recuperadas na próxima.</div>';
+  if(m.macro&&m.macro.total&&m.macro.ok<m.macro.total)h+='<div class="warnbox">Faltaram dados do intervalo maior ('+esc(m.macro.tf)+') para '+(m.macro.total-m.macro.ok)+' moeda(s). Por segurança, essas moedas ficam sem novos sinais até os dados voltarem.</div>';
   if(m.configError)h+='<div class="warnbox">Erro na configuração, mantendo a anterior: '+esc(m.configError)+'</div>';
   h+='<p class="qfoot">O robô roda sozinho no servidor do GitHub, com o seu computador desligado, checando a cada cerca de 5 minutos. Ele decide só quando uma vela fecha. Aqui você acompanha; para mudar algo, edite o arquivo robo/config.json.</p>';
   el.className='card botstate'+(run?' on':'');el.innerHTML=h;
@@ -1430,6 +1508,7 @@ function setView(v){
 /* ---------- início ---------- */
 function init(){
   var saved=load();
+  setInterval(function(){var el=$('hjCountdown');if(el){var at=+el.getAttribute('data-at');el.textContent=Rd.countdown(at-Date.now())}},1000);
   $('ver').textContent='Versão '+(window.RADAR_VERSION||'?');
   try{applyTheme(localStorage.getItem(THEME_KEY)||'auto')}catch(e){applyTheme('auto')}
   matchPreset();

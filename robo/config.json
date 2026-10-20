@@ -17,5 +17,6 @@
   "limiteDiarioPct": 3,
   "taxaPorLadoPct": 0.05,
   "derrapagemPorLadoPct": 0.02,
-  "zerarHistorico": "fase3-4h-candidata"
+  "confirmacaoMacro": true,
+  "zerarHistorico": "fase4-macro-4h"
 }

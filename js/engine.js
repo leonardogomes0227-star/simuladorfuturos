@@ -11,8 +11,8 @@ var MMR=0.5; // margem de manutenção aproximada, em %, usada na liquidação
 // Recursos novos ficam desligados (0) por padrão, então a estratégia clássica continua igual:
 // trendP: EMA longa de tendência (só opera a favor dela); beR: leva o stop para a entrada após esse lucro em R;
 // trailAtr: stop que persegue o preço a essa distância em ATR; maxBars: sai por tempo; atrMinPct/atrMaxPct: filtro de volatilidade;
-// cooldown: velas de pausa depois de uma operação perdedora.
-var DEFAULTS={emaF:9,emaM:21,emaS:50,adxMin:20,minScore:4,stopAtr:1.5,rr:2,trendP:0,beR:0,trailAtr:0,maxBars:0,atrMinPct:0,atrMaxPct:0,cooldown:0};
+// cooldown: velas de pausa depois de uma operação perdedora; htf: só opera a favor da tendência do intervalo maior (15m confirma com 4h, 4h com 1d...).
+var DEFAULTS={emaF:9,emaM:21,emaS:50,adxMin:20,minScore:4,stopAtr:1.5,rr:2,trendP:0,beR:0,trailAtr:0,maxBars:0,atrMinPct:0,atrMaxPct:0,cooldown:0,htf:0};
 var PRESETS={
   padrao:{name:'Padrão',p:{emaF:9,emaM:21,emaS:50,adxMin:20,minScore:4,stopAtr:1.5,rr:2}},
   conservadora:{name:'Conservadora',p:{emaF:9,emaM:21,emaS:50,adxMin:25,minScore:5,stopAtr:1.5,rr:2}},
@@ -38,6 +38,7 @@ function normParams(p){
   o.atrMinPct=o.atrMinPct>0?clamp(o.atrMinPct,0.05,5):0;
   o.atrMaxPct=o.atrMaxPct>0?clamp(Math.max(o.atrMaxPct,o.atrMinPct),0.1,20):0;
   o.cooldown=o.cooldown>0?Math.round(clamp(o.cooldown,1,50)):0;
+  o.htf=o.htf>0?1:0;
   return o;
 }
 
@@ -92,16 +93,40 @@ function adx(cs,p){
   for(i=2*p;i<n;i++){a=(a*(p-1)+dxs[i])/p;out[i]=a;}
   return out;
 }
-function computeIndicators(cs,params){
+// ---- intervalo maior (confirmação macro) ----
+function spacing(a){
+  var d=[];for(var k=1;k<a.length&&d.length<60;k++)d.push(a[k].t-a[k-1].t);
+  d.sort(function(x,y){return x-y});return d.length?d[Math.floor(d.length/2)]:NaN;
+}
+function tfName(ms){var m=ms/60000;if(m<60)return Math.round(m)+'m';if(m<1440)return Math.round(m/60)+'h';if(m<10080)return Math.round(m/1440)+'d';return Math.round(m/10080)+'sem'}
+// Para cada vela base, a tendência da última vela do intervalo maior JÁ FECHADA naquele instante:
+// 1 alta (preço e média 21 acima da 50), -1 baixa, 0 lateral/indefinida. Sem olhar o futuro.
+function htfBiasSeries(cs,hc){
+  var tfB=spacing(cs),tfH=spacing(hc);
+  if(!(tfB>0)||!(tfH>0)||tfH<=tfB)return {missing:true};
+  var cl=hc.map(function(c){return c.c}),e21=ema(cl,21),e50=ema(cl,50),ax=adx(hc,14),n=cs.length,bias=nanArr(n),hadx=nanArr(n),j=-1;
+  for(var i=0;i<n;i++){
+    var tc=cs[i].t+tfB;
+    while(j+1<hc.length&&hc[j+1].t+tfH<=tc)j++;
+    if(j>=0&&isFinite(e50[j])){
+      var c=cl[j];
+      bias[i]=c>e50[j]&&e21[j]>e50[j]?1:(c<e50[j]&&e21[j]<e50[j]?-1:0);
+      hadx[i]=ax[j];
+    }
+  }
+  return {bias:bias,adx:hadx,name:tfName(tfH),tf:tfH};
+}
+function computeIndicators(cs,params,htfCs){
   var P=normParams(params);
   var cl=cs.map(function(x){return x.c}),vo=cs.map(function(x){return x.v}),n=cs.length,hh=nanArr(n),ll=nanArr(n);
   for(var i=20;i<n;i++){var h=-Infinity,l=Infinity;for(var j=i-20;j<i;j++){if(cs[j].h>h)h=cs[j].h;if(cs[j].l<l)l=cs[j].l;}hh[i]=h;ll[i]=l;}
-  return {et:P.trendP>0?ema(cl,P.trendP):null,ef:ema(cl,P.emaF),em:ema(cl,P.emaM),es:ema(cl,P.emaS),rsi:rsi(cl,14),atr:atr(cs,14),adx:adx(cs,14),vavg:sma(vo,20),hh20:hh,ll20:ll};
+  var htf=P.htf>0?(htfCs&&htfCs.length>2?htfBiasSeries(cs,htfCs):{missing:true}):null;
+  return {htf:htf,et:P.trendP>0?ema(cl,P.trendP):null,ef:ema(cl,P.emaF),em:ema(cl,P.emaM),es:ema(cl,P.emaS),rsi:rsi(cl,14),atr:atr(cs,14),adx:adx(cs,14),vavg:sma(vo,20),hh20:hh,ll20:ll};
 }
 function minBars(P){return Math.max(60,P.emaS+11,P.trendP>0?P.trendP+11:0)}
 function signalAt(cs,ind,i,params){
   var P=normParams(params);
-  var out={dir:'wait',score:0,reasons:[],blockers:[],entry:null,stop:null,target:null,risk:null,rr:P.rr,atr:null,regime:'indefinido'};
+  var out={dir:'wait',score:0,reasons:[],blockers:[],entry:null,stop:null,target:null,risk:null,rr:P.rr,atr:null,regime:'indefinido',adx:null,rsi:null,volRatio:null,htfBias:null,htfName:null,checks:[]};
   if(i<minBars(P)){out.blockers.push('Poucas velas para analisar');return out}
   var b=cs[i],c=b.c,ef=ind.ef[i],em=ind.em[i],es=ind.es[i],r=ind.rsi[i],a=ind.atr[i],ad=ind.adx[i],va=ind.vavg[i];
   if([ef,em,es,r,a,ad,va,ind.hh20[i]].some(function(x){return !isFinite(x)})){out.blockers.push('Indicadores ainda sem dados suficientes');return out}
@@ -117,13 +142,24 @@ function signalAt(cs,ind,i,params){
   if(c>ind.hh20[i]){score+=1;out.reasons.push('Fechou acima da máxima das últimas 20 velas')}
   else if(c<ind.ll20[i]){score-=1;out.reasons.push('Fechou abaixo da mínima das últimas 20 velas')}
   if(b.v>1.2*va){if(b.c>b.o){score+=1;out.reasons.push('Volume acima da média em vela de alta')}else if(b.c<b.o){score-=1;out.reasons.push('Volume acima da média em vela de baixa')}}
-  out.score=score;out.atr=a;
+  out.score=score;out.atr=a;out.adx=ad;out.rsi=r;out.volRatio=b.v/va;
   out.regime=ad<P.adxMin?'lateral':(up?'alta':(dn?'baixa':'transição'));
   if(ad<P.adxMin)out.blockers.push('Mercado lateral (ADX '+ad.toFixed(0)+', abaixo de '+P.adxMin+')');
   if(score>=P.minScore){if(r>72)out.blockers.push('RSI esticado em '+r.toFixed(0)+', compra tardia')}
   else if(score<=-P.minScore){if(r<28)out.blockers.push('RSI esticado em '+r.toFixed(0)+', venda tardia')}
   else out.blockers.push('Tendência, força e volume sem alinhamento suficiente ('+score+' pontos de 6, mínimo '+P.minScore+')');
+  var hb=NaN,macroTxt='';
+  if(P.htf>0){
+    if(!ind.htf||ind.htf.missing)macroTxt='sem dados do intervalo maior';
+    else{hb=ind.htf.bias[i];out.htfName=ind.htf.name;out.htfBias=isFinite(hb)?hb:null;macroTxt=!isFinite(hb)?'poucas velas no intervalo maior':(hb===1?'em alta':(hb===-1?'em baixa':'lateral'))}
+  }
   if(Math.abs(score)>=P.minScore){
+    if(P.htf>0){
+      if(!ind.htf||ind.htf.missing)out.blockers.push('Sem dados do intervalo maior para confirmar');
+      else if(!isFinite(hb))out.blockers.push('Poucas velas no intervalo maior ('+ind.htf.name+')');
+      else if(score>0&&hb!==1)out.blockers.push('Compra sem apoio da tendência maior ('+ind.htf.name+' '+macroTxt+')');
+      else if(score<0&&hb!==-1)out.blockers.push('Venda sem apoio da tendência maior ('+ind.htf.name+' '+macroTxt+')');
+    }
     if(P.trendP>0){
       var et=ind.et[i];
       if(!isFinite(et))out.blockers.push('Poucas velas para a tendência longa');
@@ -134,6 +170,18 @@ function signalAt(cs,ind,i,params){
     if(P.atrMinPct>0&&ap<P.atrMinPct)out.blockers.push('Volatilidade baixa demais ('+ap.toFixed(2)+'%)');
     if(P.atrMaxPct>0&&ap>P.atrMaxPct)out.blockers.push('Volatilidade alta demais ('+ap.toFixed(2)+'%)');
   }
+  // lista de critérios, a base do semáforo na tela: cada um com resultado e uma frase curta
+  var ck=out.checks,rsiBad=(score>=P.minScore&&r>72)||(score<=-P.minScore&&r<28);
+  ck.push({id:'adx',required:true,ok:ad>=P.adxMin,label:'Mercado com tendência, não lateral',detail:'ADX '+ad.toFixed(0)+' (mínimo '+P.adxMin+')'});
+  if(P.htf>0){
+    var macroOk=isFinite(hb)&&(score>0?hb===1:(score<0?hb===-1:hb!==0));
+    ck.push({id:'macro',required:true,ok:macroOk,label:'Alinhado com a tendência maior'+(out.htfName?' ('+out.htfName+')':''),detail:'Tendência maior '+macroTxt});
+  }
+  ck.push({id:'align',required:true,ok:up||dn,label:'Médias apontando para o mesmo lado',detail:up?'para cima':(dn?'para baixo':'misturadas')});
+  ck.push({id:'score',required:true,ok:Math.abs(score)>=P.minScore,label:'Pontuação mínima ('+P.minScore+' de 6)',detail:Math.abs(score)+' pontos'});
+  ck.push({id:'rsi',required:true,ok:!rsiBad,label:'Sem exagero de preço (RSI)',detail:'RSI '+r.toFixed(0)});
+  ck.push({id:'volume',required:false,ok:b.v>1.2*va,label:'Volume confirmando',detail:(b.v/va).toFixed(1).replace('.',',')+'x da média'});
+  ck.push({id:'rr',required:false,ok:P.rr>=2,label:'Retorno maior que o risco',detail:P.rr+' : 1'});
   if(!out.blockers.length){
     var long=score>=P.minScore,risk=P.stopAtr*a;
     out.dir=long?'long':'short';out.entry=c;out.risk=risk;
@@ -241,5 +289,5 @@ function parseCSV(text){
 
 return {MMR:MMR,DEFAULTS:DEFAULTS,PRESETS:PRESETS,normParams:normParams,mulberry32:mulberry32,genCandles:genCandles,
   ema:ema,sma:sma,rsi:rsi,atr:atr,adx:adx,computeIndicators:computeIndicators,signalAt:signalAt,levels:levels,
-  sizing:sizing,stepTrade:stepTrade,minBars:minBars,backtest:backtest,resolveTrade:resolveTrade,parseCSV:parseCSV};
+  sizing:sizing,stepTrade:stepTrade,minBars:minBars,htfBiasSeries:htfBiasSeries,tfName:tfName,backtest:backtest,resolveTrade:resolveTrade,parseCSV:parseCSV};
 });

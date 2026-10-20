@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       intervalo:
-        description: 'Tamanho da vela (1h ou 4h)'
+        description: 'Tamanho da vela (15m, 1h ou 4h)'
         default: '1h'
       meses:
         description: 'Meses de histórico'
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   pesquisar:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

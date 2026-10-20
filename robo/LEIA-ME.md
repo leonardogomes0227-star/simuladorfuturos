@@ -4,6 +4,7 @@ Edite `config.json` neste mesmo diretório (no GitHub: abra o arquivo, clique no
 
 | Campo | O que é | Valores |
 | --- | --- | --- |
+| `confirmacaoMacro` | **só opera a favor da tendência do intervalo maior** (15m com 4h, 1h com 4h, 4h com 1 dia). Sem dados do intervalo maior, o robô não abre posição nova | `true` ou `false` |
 | `ligado` | liga ou desliga o robô | `true` ou `false` |
 | `estrategia` | regra de entrada | `padrao`, `conservadora`, `agressiva`, `lenta` |
 | `parametros` | opcional: troca `estrategia` por números seus: `emaF`, `emaM`, `emaS`, `adxMin`, `minScore`, `stopAtr`, `rr` e os recursos extras `trendP` (média longa de tendência), `beR` (stop no breakeven após esse lucro em R), `trailAtr` (stop móvel em ATR), `maxBars` (saída por tempo), `atrMinPct`/`atrMaxPct` (filtro de volatilidade) e `cooldown` (pausa em velas depois de uma perda). Tudo que não for informado fica desligado | objeto |

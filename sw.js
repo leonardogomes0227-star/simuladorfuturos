@@ -1,10 +1,10 @@
 // Service worker do Radar de Futuros: o app abre offline, mas SEMPRE tenta a rede primeiro,
 // para quem está online nunca ver uma versão velha. Os dados de mercado nunca são guardados.
 // Troque VERSION (e RADAR_VERSION em js/config.js) a cada publicação.
-const VERSION = 'radar-v2.4.0';
+const VERSION = 'radar-v2.5.0';
 const SHELL = [
   './', 'index.html', 'css/style.css',
-  'js/config.js', 'js/engine.js', 'js/metrics.js', 'js/data.js', 'js/bot.js', 'js/hoje.js', 'js/app.js',
+  'js/config.js', 'js/engine.js', 'js/metrics.js', 'js/data.js', 'js/bot.js', 'js/hoje.js', 'js/radar.js', 'js/narrativa.js', 'js/app.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'
 ];
 
