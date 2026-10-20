@@ -6,6 +6,9 @@ Site estático, sem build e sem dependências. Abra `index.html` por um servidor
 
 ## O que tem
 
+- **Robô de simulação** (tela principal): opera sozinho no papel, vela fechada a vela fechada, em várias moedas, com a estratégia escolhida. Aplica taxa, derrapagem, limite diário e máximo de posições. Mostra saldo, curva, posições abertas com o motivo da entrada, histórico e um placar de "pronto para operar de verdade?". Roda enquanto a aba estiver aberta e, ao reabrir, **recupera o que perdeu** reprocessando o histórico da Binance (até 500 velas), com o mesmo resultado que teria em tempo real. Para rodar 24h sem aba aberta seria preciso um servidor.
+- **Testar antes de ligar**: backtest de todas as estratégias nas moedas escolhidas.
+
 - **Dados reais**: velas da Binance (API pública, sem chave) por WebSocket, com fallback para atualização a cada 5 s; intervalos de 1 min a 1 dia; busca de qualquer par USDT. Também há dados simulados e importação de CSV.
 - **Treino cego**: no CSV, esconde o futuro e libera uma vela por vez, com velocidade ajustável.
 - **Ordens**: sinal automático ou plano manual (Comprar/Vender), com stop e alvo ajustáveis digitando ou arrastando as linhas no gráfico.
@@ -30,6 +33,7 @@ Estrutura:
 | `js/engine.js` | Indicadores, sinal, dimensionamento, backtest, leitura de CSV (puro, testado) |
 | `js/metrics.js` | Métricas do diário, exposição, exportação (puro, testado) |
 | `js/data.js` | Cliente da Binance: REST, WebSocket, fallback (testado com `fetch` simulado) |
+| `js/bot.js` | Robô de simulação: passo a passo determinístico, recuperação, prontidão (puro, testado) |
 | `js/app.js` | Interface e estado |
 | `sw.js` | Cache offline. **Mude `VERSION` a cada publicação.** |
 

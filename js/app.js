@@ -19,7 +19,7 @@ var S={src:'demo',demoSym:'BTCUSDT',liveSym:'BTCUSDT',csvSym:'CSV',csvName:'',tf
   params:E.normParams(),presetId:'padrao',custom:{},
   live:{tok:0,ws:null,poll:null,retry:null,state:'off'},
   f:{sym:'',res:'',side:'',reason:'',tag:''},diaryN:25,
-  resetArm:null,cancelArm:null,msgTimer:null,cmpCache:{},renderQueued:false,tickPending:false,installEvt:null};
+  view:'bot',wantLive:false,resetArm:null,cancelArm:null,msgTimer:null,cmpCache:{},renderQueued:false,tickPending:false,installEvt:null};
 
 /* ---------- formatação ---------- */
 function fmtPrice(p){if(!isFinite(p))return '–';var a=Math.abs(p),d=a>=1000?2:(a>=10?3:(a>=1?4:(a>=0.01?5:8)));return p.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})}
@@ -318,7 +318,7 @@ function renderHeader(){
   if(document.activeElement!==$('symLive'))$('symLive').value=S.liveSym;
   $('sym').value=S.demoSym;$('tf').value=S.tf;$('speed').value=String(S.speed);
   $('auto').setAttribute('aria-pressed',String(S.auto));$('auto').textContent=S.auto?'Pausar':'Reproduzir';
-  document.title=fmtPrice(c.c)+' · '+inst()+' · Radar de Futuros';
+  document.title=S.view==='manual'?fmtPrice(c.c)+' · '+inst()+' · Radar de Futuros':'Radar de Futuros';
 }
 
 function renderReading(){
@@ -787,7 +787,7 @@ function downloadFile(name,text,type){
 }
 function stamp(){var d=new Date(),p=function(n){return String(n).padStart(2,'0')};return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())}
 function exportBackup(){
-  downloadFile('radar-backup-'+stamp()+'.json',JSON.stringify({app:'radar-futuros',version:2,exportedAt:new Date().toISOString(),data:snapshot()},null,1),'application/json');
+  downloadFile('radar-backup-'+stamp()+'.json',JSON.stringify({app:'radar-futuros',version:2,exportedAt:new Date().toISOString(),data:snapshot(),bot:B},null,1),'application/json');
   say('Backup exportado.');track('export');
 }
 function importBackup(file){
@@ -800,6 +800,7 @@ function importBackup(file){
     if(!window.confirm('Importar o backup vai substituir o diário e as configurações atuais ('+n+' operações no arquivo). Continuar?'))return;
     pushUndo();
     S.trades=[];S.custom={};applyData(d.data);matchPreset();S.cmpCache={};
+    if(d.bot){B=Bot.sanitize(d.bot);B.running=false;stopBotTimer();saveBot();renderBot()}
     useDemo();syncInputs();say('Backup importado: '+S.trades.length+' operações.');
   };
   fr.onerror=function(){say('Não consegui ler o arquivo.')};
@@ -924,7 +925,9 @@ function bind(){
   $('bkImport').addEventListener('click',function(){$('bkFile').click()});
   $('bkFile').addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];e.target.value='';if(f)importBackup(f)});
 
-  bindChart();
+  bindChart();bindBot();
+  $('tabBot').addEventListener('click',function(){setView('bot')});
+  $('tabManual').addEventListener('click',function(){setView('manual')});
   window.addEventListener('resize',drawChart);
   try{new ResizeObserver(drawChart).observe($('chart'))}catch(e){}
   try{new MutationObserver(drawChart).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']})}catch(e){}
@@ -943,6 +946,7 @@ function onKey(e){
   if((tag==='INPUT'&&!/^(checkbox|radio|button|file)$/.test(tg.type))||tag==='SELECT'||tag==='TEXTAREA'||$('helpDlg').open)return;
   var k=e.key,ctrl=e.ctrlKey||e.metaKey;
   if(tag==='BUTTON'&&(k===' '||k==='Enter'))return;
+  if(S.view==='bot'&&k!=='?'&&k!=='t'&&k!=='T')return;
   if(ctrl&&(k==='z'||k==='Z')){e.preventDefault();undo();return}
   if(ctrl||e.altKey)return;
   switch(k){
@@ -963,6 +967,217 @@ function onKey(e){
   }
 }
 
+/* ---------- robô de simulação ---------- */
+var Bot=window.RadarBot,BOT_KEY='radar-robo-v1',VIEW_KEY='radar-aba';
+var B=Bot.defaults(),botBusy=false,botTimer=null,botTestBusy=false,botResetArm=null,botNet='';
+var BOT_IN={bCapital:'capital',bRisk:'riskPct',bLev:'lev',bMaxOpen:'maxOpen',bDaily:'dailyPct',bFee:'feePct',bSlip:'slipPct'};
+
+function loadBot(){try{var r=localStorage.getItem(BOT_KEY);if(r)B=Bot.sanitize(JSON.parse(r))}catch(e){}}
+function saveBot(){try{localStorage.setItem(BOT_KEY,JSON.stringify(B))}catch(e){}}
+function botLocked(){return B.running||Bot.openTrades(B).length>0}
+function presetName(id){var m=presetList().filter(function(x){return x.id===id})[0];return m?m.name:'Personalizada'}
+function symInput(v){
+  var s=D.normSymbol(v);
+  if(/^[A-Z0-9]{2,10}$/.test(s)&&!/^[A-Z0-9]+(USDT|USDC|BUSD|FDUSD|TUSD|BTC|ETH|BNB)$/.test(s))s+='USDT';
+  return s;
+}
+
+function botEvery(){return clamp(D.TFS[B.cfg.tf]/4,30000,300000)}
+function startBotTimer(){clearInterval(botTimer);botTimer=setInterval(botTick,botEvery())}
+function stopBotTimer(){clearInterval(botTimer);botTimer=null}
+function botStart(){
+  if(B.running)return;
+  if(!B.startedAt)B.startedAt=Date.now();
+  if(!Bot.openTrades(B).length)B.cursor={};
+  B.running=true;saveBot();startBotTimer();renderBot();botTick();track('bot');
+}
+function botStop(){
+  B.running=false;stopBotTimer();saveBot();renderBot();
+  if(Bot.openTrades(B).length)say('Robô pausado. As posições abertas continuam valendo: ao religar, ele recupera o que aconteceu com elas.');
+}
+function botTick(){
+  if(!B.running||botBusy)return;
+  botBusy=true;
+  var tf=B.cfg.tf,syms=B.cfg.syms.slice();
+  Promise.all(syms.map(function(sym){
+    return D.fetchKlines(sym,tf,500).then(function(cs){return {sym:sym,cs:cs}}).catch(function(){return null});
+  })).then(function(res){
+    botBusy=false;
+    if(!B.running||tf!==B.cfg.tf)return;
+    var data={},ok=0;
+    res.forEach(function(r){if(r){data[r.sym]=r.cs;ok++;B.prices[r.sym]=r.cs[r.cs.length-1].c}});
+    if(!ok){botNet='off';renderBotHero();return}
+    botNet=ok<syms.length?'part':'ok';
+    var ev=Bot.step(B,data,Date.now());
+    saveBot();renderBot();notifyBot(ev);
+  });
+}
+function notifyBot(ev){
+  if(!B.cfg.notify||!ev.length||typeof Notification==='undefined'||Notification.permission!=='granted')return;
+  ev.slice(0,4).forEach(function(e){
+    var t=e.trade,open=e.type==='open';
+    try{new Notification(open?'Robô abriu '+(t.side==='long'?'compra':'venda')+' em '+t.sym:'Robô fechou '+t.sym+' ('+t.reason+')',
+      {body:open?'Entrada '+fmtPrice(t.entry)+' · stop '+fmtPrice(t.stop)+' · alvo '+fmtPrice(t.target):fmtSigned(t.pnl)+' USDT',icon:'icons/icon-192.png',tag:t.id+e.type})}catch(x){}
+  });
+}
+
+function botSummary(){
+  var sm=M.summarize(B.trades,B.cfg.capital),unreal=0;
+  Bot.openTrades(B).forEach(function(t){var u=Bot.unrealized(B,t);if(isFinite(u))unreal+=u});
+  return {sm:sm,unreal:unreal,equity:Bot.balance(B)+unreal};
+}
+function renderBotHero(){
+  var run=B.running,h='<div class="state"><div class="qword '+(run?'long':'wait')+'">'+(run?'ROBÔ LIGADO':'ROBÔ DESLIGADO')+'</div>'+
+    '<button id="bToggle" class="btn big '+(run?'':'primary')+'" type="button">'+(run?'Pausar robô':'Ligar robô')+'</button></div>';
+  if(run){
+    h+='<p class="qtext">Rodando desde '+fmtDate(B.startedAt)+' · última checagem '+(B.lastRun?'há '+fmtDur(Date.now()-B.lastRun):'ainda não aconteceu')+'. Acompanhando '+esc(B.cfg.syms.join(', '))+' em velas de '+esc(B.cfg.tf)+' com a estratégia '+esc(presetName(B.cfg.presetId))+'.</p>';
+    if(botNet==='off')h+='<div class="warnbox">Não consegui falar com a Binance na última checagem. Ele tenta de novo sozinho e recupera as velas perdidas.</div>';
+    else if(botNet==='part')h+='<div class="warnbox">Algumas moedas não responderam na última checagem. Elas serão recuperadas na próxima.</div>';
+    h+='<p class="qfoot">Ele decide só quando uma vela fecha. Se você fechar esta aba, ele para; ao reabrir, recupera tudo o que perdeu pelo histórico da Binance (até 500 velas) e confere stops e alvos vela por vela.</p>';
+  }else{
+    h+='<p class="qtext">'+(B.trades.length?'Robô parado. Ao ligar de novo, ele recomeça a partir de agora.':'O robô opera sozinho no simulado, usando só velas fechadas, a estratégia e as moedas configuradas abaixo. Ele começa a partir de agora, sem olhar o passado.')+'</p>'+
+      '<p class="qfoot">Nenhuma ordem real é enviada. Funciona enquanto esta aba estiver aberta e se recupera ao reabrir. Confira a configuração abaixo e clique em Ligar robô.</p>';
+  }
+  $('botHero').className='card botstate'+(run?' on':'');$('botHero').innerHTML=h;
+}
+function renderBot(){
+  renderBotHero();
+  var bs=botSummary(),sm=bs.sm,cap=B.cfg.capital,open=Bot.openTrades(B),total=bs.equity-cap;
+  var pf=sm.pf===Infinity?'∞':fmt2(sm.pf),st=function(l,v,c){return '<div class="stat"><span>'+l+'</span><b'+(c?' class="'+c+'"':'')+'>'+v+'</b></div>'};
+  $('botStats').innerHTML=
+    st('Saldo do robô',fmt2(bs.equity)+' USDT')+
+    st('Resultado',fmtSigned(total)+' ('+(total>=0?'+':'')+f1(total/cap*100)+'%)',sgn(total))+
+    st('Operações fechadas',String(sm.n))+st('Em aberto',String(open.length))+
+    st('Taxa de acerto',sm.n?sm.winRate.toFixed(0)+'%':'–')+st('Fator de lucro',sm.n?pf:'–')+
+    st('Maior queda',sm.n?fmt2(sm.maxDD)+' ('+f1(sm.maxDDPct)+'%)':'–');
+  $('botCurve').innerHTML=sm.n>=2?sparkSVG([{v:sm.curve,color:'var(--accent)',dot:true}],{base:cap,h:110,label:'Curva de saldo do robô'}):'<div class="empty">A curva aparece depois das primeiras operações fechadas.</div>';
+
+  if(!open.length)$('botOpen').innerHTML='<div class="empty">'+(B.running?'Nenhuma posição aberta. O robô está esperando um sinal.':'Nenhuma posição aberta.')+'</div>';
+  else $('botOpen').innerHTML='<div class="tablewrap"><table><thead><tr><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Stop</th><th class="r">Alvo</th><th class="r">Preço</th><th class="r">Resultado agora</th><th class="l">Por que entrou</th></tr></thead><tbody>'+
+    open.map(function(t){var u=Bot.unrealized(B,t);return '<tr><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r neg">'+fmtPrice(t.stop)+'</td><td class="r pos">'+fmtPrice(t.target)+'</td><td class="r">'+fmtPrice(B.prices[t.sym])+'</td><td class="r '+sgn(u)+'">'+(isFinite(u)?fmtSigned(u):'–')+'</td><td class="l why">'+esc(t.reasons.join('; '))+'</td></tr>'}).join('')+'</tbody></table></div>';
+
+  var cl=Bot.closedTrades(B).slice().sort(function(a,b){return b.closedAt-a.closedAt}).slice(0,30),h='';
+  if(!cl.length)h='<div class="empty">Quando o robô fechar operações, elas aparecem aqui.</div>';
+  else h='<div class="tablewrap"><table><thead><tr><th class="l">Fechada em</th><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Resultado</th><th class="r">R</th><th class="l">Saída por</th></tr></thead><tbody>'+
+    cl.map(function(t){return '<tr><td class="l">'+fmtDate(t.closedAt)+'</td><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r">'+fmtPrice(t.exit)+'</td><td class="r '+sgn(t.pnl)+'">'+fmtSigned(t.pnl)+'</td><td class="r">'+(t.risk>0?fmtSigned(t.pnl/t.risk):'–')+'</td><td class="l">'+esc(t.reason)+'</td></tr>'}).join('')+'</tbody></table></div>';
+  if(B.log.length)h+='<ul class="list">'+B.log.slice(-5).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
+  $('botHist').innerHTML=h;
+  renderBotCfg();renderBotReady();
+}
+function renderBotCfg(){
+  var lockAll=B.running,lockStruct=botLocked(),sel=$('bPreset'),opts=presetList().map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>'}).join('');
+  var known=presetList().some(function(x){return x.id===B.cfg.presetId});
+  if(!known)opts+='<option value="'+esc(B.cfg.presetId)+'">Personalizada</option>';
+  if(sel.getAttribute('data-k')!==opts){sel.setAttribute('data-k',opts);sel.innerHTML=opts}
+  sel.value=B.cfg.presetId;sel.disabled=lockStruct;$('bTf').value=B.cfg.tf;$('bTf').disabled=lockStruct;
+  Object.keys(BOT_IN).forEach(function(id){var el=$(id);if(document.activeElement!==el)el.value=B.cfg[BOT_IN[id]];el.disabled=lockAll});
+  $('bCapital').disabled=lockAll||B.trades.length>0;
+  $('bNotify').checked=!!B.cfg.notify;
+  $('bSyms').innerHTML=B.cfg.syms.map(function(s){return '<span class="chip">'+esc(s)+(lockStruct?'':'<button type="button" data-rm="'+esc(s)+'" aria-label="Remover '+esc(s)+'">×</button>')+'</span>'}).join('');
+  $('bSymAdd').disabled=lockStruct;$('bSymAddBtn').disabled=lockStruct;
+  $('botLock').textContent=B.running?'Pause o robô para mudar a configuração.':(lockStruct?'Há posições abertas: encerre-as para mudar estratégia, intervalo e moedas.':'');
+  $('bCloseAll').disabled=!Bot.openTrades(B).length;
+}
+function renderBotReady(){
+  var rd=Bot.readiness(B,Date.now()),h='<h2>Pronto para operar de verdade?</h2><ul class="checklist">'+
+    rd.checks.map(function(c){return '<li><span class="'+(c.ok?'ok':'no')+'">'+(c.ok?'✓':'○')+'</span><span>'+esc(c.label)+'</span><span class="d">'+esc(c.detail)+'</span></li>'}).join('')+'</ul>';
+  h+=rd.ready
+    ?'<p class="note">O robô cumpriu todos os critérios no simulado. É um bom sinal, mas não é garantia: no mercado real a derrapagem é pior, as ordens podem falhar e o emocional pesa. Se for operar de verdade, comece pequeno, com a menor alavancagem, e só com dinheiro que você aceita perder.</p>'
+    :'<p class="note">Ainda não: '+rd.passed+' de '+rd.checks.length+' critérios cumpridos. Deixe o robô rodar mais antes de pensar em dinheiro real. Resultado simulado nunca garante resultado real.</p>';
+  $('botReady').innerHTML=h;
+}
+
+function botTest(){
+  if(botTestBusy)return;
+  botTestBusy=true;$('bTestBtn').disabled=true;$('bTestOut').innerHTML='<div class="empty">Buscando dados e testando…</div>';
+  var syms=B.cfg.syms.slice(),fee=B.cfg.feePct;
+  Promise.all(syms.map(function(sym){return D.fetchKlines(sym,B.cfg.tf,1000).then(function(cs){return {sym:sym,cs:cs}}).catch(function(){return null})})).then(function(res){
+    botTestBusy=false;$('bTestBtn').disabled=false;
+    var data=res.filter(Boolean);
+    if(!data.length){$('bTestOut').innerHTML='<div class="empty">Não consegui buscar dados da Binance agora.</div>';return}
+    var rows=presetList().map(function(x){
+      var rs=data.map(function(d){return E.backtest(d.cs,E.computeIndicators(d.cs,x.p),fee,x.p)});
+      return {x:x,a:Bot.aggregate(rs)};
+    });
+    var best=null;rows.forEach(function(r){if(r.a.n>=10&&(!best||r.a.totalR>best.a.totalR))best=r});
+    var f=function(n){return n.toFixed(2).replace('.',',')};
+    $('bTestOut').innerHTML='<div class="tablewrap"><table><thead><tr><th class="l">Estratégia</th><th class="r">Ops</th><th class="r">Acerto</th><th class="r">Resultado (R)</th><th class="r">R por op.</th><th class="r">Fator de lucro</th><th></th></tr></thead><tbody>'+
+      rows.map(function(r){var a=r.a;return '<tr class="'+(best===r?'activeRow':'')+'"><td class="l">'+esc(r.x.name)+(best===r?' <span class="tag">melhor nesta amostra</span>':'')+'</td><td class="r">'+a.n+'</td><td class="r">'+(a.n?a.winRate.toFixed(0)+'%':'–')+'</td><td class="r '+sgn(a.totalR)+'">'+(a.n?fmtSigned(a.totalR):'–')+'</td><td class="r">'+(a.n?fmtSigned(a.avgR):'–')+'</td><td class="r">'+(a.n?(isFinite(a.pf)?f(a.pf):'∞'):'–')+'</td><td class="r"><button class="btn" type="button" data-use="'+esc(r.x.id)+'"'+(botLocked()?' disabled':'')+'>Usar</button></td></tr>'}).join('')+'</tbody></table></div>'+
+      '<p class="note">'+data.length+' de '+syms.length+' moedas testadas, '+data[0].cs.length+' velas cada. "R" é o lucro medido em múltiplos do risco de cada operação. Amostras curtas enganam: confirme no robô rodando.</p>';
+  });
+}
+function botAddSym(){
+  var s=symInput($('bSymAdd').value);$('bSymAdd').value='';
+  if(!s)return;
+  if(!D.validSymbol(s)){say('Moeda inválida. Exemplo: SUI ou SUIUSDT.');return}
+  if(B.cfg.syms.indexOf(s)>=0){say(s+' já está na lista.');return}
+  if(B.cfg.syms.length>=10){say('Limite de 10 moedas.');return}
+  D.fetchKlines(s,B.cfg.tf,50).then(function(){if(botLocked())return;B.cfg.syms.push(s);saveBot();renderBot()}).catch(function(e){say('Não consegui adicionar '+s+': '+e.message+'.')});
+}
+function bindBot(){
+  $('botHero').addEventListener('click',function(e){if(e.target.closest('#bToggle'))B.running?botStop():botStart()});
+  $('bPreset').addEventListener('change',function(e){
+    var m=presetList().filter(function(x){return x.id===e.target.value})[0];if(!m||botLocked())return;
+    B.cfg.presetId=m.id;B.params=E.normParams(m.p);saveBot();renderBot();
+  });
+  $('bTf').addEventListener('change',function(e){if(botLocked())return;B.cfg.tf=e.target.value;B.cursor={};saveBot();renderBot()});
+  Object.keys(BOT_IN).forEach(function(id){
+    var k=BOT_IN[id],r=Bot.CFG_RANGE[k],el=$(id);
+    el.addEventListener('change',function(){
+      if(B.running)return;
+      var v=parseFloat(String(el.value).replace(',','.'));if(!isFinite(v))v=B.cfg[k];
+      v=clamp(v,r[0],r[1]);if(k==='maxOpen')v=Math.round(v);
+      B.cfg[k]=v;el.value=v;saveBot();renderBot();
+    });
+  });
+  $('bNotify').addEventListener('change',function(e){
+    var on=e.target.checked;
+    if(on&&typeof Notification!=='undefined'&&Notification.permission==='default'){
+      Notification.requestPermission().then(function(p){if(p!=='granted'){say('O navegador não deixou enviar avisos.');B.cfg.notify=false}else B.cfg.notify=true;saveBot();renderBotCfg()});return;
+    }
+    if(on&&(typeof Notification==='undefined'||Notification.permission==='denied')){say('Os avisos estão bloqueados neste navegador.');e.target.checked=false;return}
+    B.cfg.notify=on;saveBot();
+  });
+  $('bSyms').addEventListener('click',function(e){
+    var b=e.target.closest('[data-rm]');if(!b||botLocked())return;
+    var s=b.getAttribute('data-rm');if(B.cfg.syms.length<=1){say('O robô precisa de pelo menos uma moeda.');return}
+    B.cfg.syms=B.cfg.syms.filter(function(x){return x!==s});delete B.cursor[s];saveBot();renderBot();
+  });
+  $('bSymAddBtn').addEventListener('click',botAddSym);
+  $('bSymAdd').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();botAddSym()}});
+  $('bCloseAll').addEventListener('click',function(){
+    var out=Bot.closeAll(B,{},Date.now());
+    if(!out.length){say('Sem preço recente para encerrar. Aguarde a próxima checagem.');return}
+    saveBot();renderBot();say(out.length+' posição(ões) encerrada(s) ao último preço.');
+  });
+  $('bReset').addEventListener('click',function(){
+    var b=$('bReset');
+    if(!botResetArm){b.textContent='Confirmar: apagar o histórico do robô?';botResetArm=setTimeout(function(){botResetArm=null;b.textContent='Zerar robô'},4000);return}
+    clearTimeout(botResetArm);botResetArm=null;b.textContent='Zerar robô';
+    var cfg=B.cfg,params=B.params;stopBotTimer();B=Bot.defaults();B.cfg=cfg;B.params=params;saveBot();renderBot();say('Robô zerado.');
+  });
+  $('bTestBtn').addEventListener('click',botTest);
+  $('bTestOut').addEventListener('click',function(e){
+    var b=e.target.closest('[data-use]');if(!b||botLocked())return;
+    var m=presetList().filter(function(x){return x.id===b.getAttribute('data-use')})[0];if(!m)return;
+    B.cfg.presetId=m.id;B.params=E.normParams(m.p);saveBot();renderBot();say('Estratégia '+m.name+' selecionada para o robô.');
+  });
+  document.addEventListener('visibilitychange',function(){if(!document.hidden&&B.running)botTick()});
+  window.addEventListener('online',function(){if(B.running)botTick()});
+}
+
+function setView(v){
+  S.view=v;document.body.setAttribute('data-view',v);
+  $('viewBot').hidden=v!=='bot';$('viewManual').hidden=v!=='manual';
+  $('tabBot').classList.toggle('on',v==='bot');$('tabManual').classList.toggle('on',v==='manual');
+  try{localStorage.setItem(VIEW_KEY,v)}catch(e){}
+  if(v==='manual'){
+    if(S.wantLive){S.wantLive=false;connectLive(S.liveSym,S.tf,true)}
+    setTimeout(function(){if(S.ind)drawChart()},0);
+    renderHeader();
+  }else{renderBot();document.title='Radar de Futuros'}
+}
+
 /* ---------- início ---------- */
 function init(){
   var saved=load();
@@ -974,8 +1189,11 @@ function init(){
   applyMode(mode!=='adv');
   try{if(window.matchMedia('(max-width:600px)').matches){['diaryCard','perfCard','stratCard'].forEach(function(id){$(id).open=false})}}catch(e){}
   evaluateOpen();renderAll();
-  if(saved.first||saved.src==='live')connectLive(S.liveSym,S.tf,true);
-  else setLiveStatus('','');
+  setLiveStatus('','');S.wantLive=!!(saved.first||saved.src==='live');
+  loadBot();
+  var view;try{view=localStorage.getItem(VIEW_KEY)}catch(e){}
+  setView(view==='manual'?'manual':'bot');
+  if(B.running){startBotTimer();botTick()}
   D.fetchSymbols().then(function(list){if(list.length)$('symlist').innerHTML=list.map(function(s){return '<option value="'+s+'">'}).join('')}).catch(function(){});
   if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
     window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});

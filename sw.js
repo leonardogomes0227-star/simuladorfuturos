@@ -1,9 +1,9 @@
 // Service worker do Radar de Futuros: o app abre offline; os dados de mercado sempre vêm da rede.
 // Troque VERSION a cada publicação para os usuários receberem os arquivos novos.
-const VERSION = 'radar-v2.0.0';
+const VERSION = 'radar-v2.1.0';
 const SHELL = [
   './', 'index.html', 'css/style.css',
-  'js/engine.js', 'js/metrics.js', 'js/data.js', 'js/app.js',
+  'js/engine.js', 'js/metrics.js', 'js/data.js', 'js/bot.js', 'js/app.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'
 ];
 
