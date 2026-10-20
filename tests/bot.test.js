@@ -129,3 +129,45 @@ test('sanitize aceita estado válido e descarta lixo',()=>{
   assert.equal(bad.trades.length,0);assert.equal(bad.running,true);assert.deepEqual(bad.cursor,{});
   assert.equal(B.sanitize(null).cfg.capital,1000);
 });
+
+test('parseConfig: valida, usa padrões e dá mensagens claras',()=>{
+  const ok=B.parseConfig({ligado:true,estrategia:'conservadora',intervalo:'1h',moedas:['btcusdt','ETHUSDT'],capital:2000,alavancagem:2});
+  assert.equal(ok.error,undefined);assert.equal(ok.cfg.tf,'1h');assert.deepEqual(ok.cfg.syms,['BTCUSDT','ETHUSDT']);
+  assert.equal(ok.cfg.capital,2000);assert.equal(ok.cfg.lev,2);assert.equal(ok.cfg.riskPct,1);assert.equal(ok.cfg.presetId,'conservadora');
+  assert.equal(ok.params.minScore,5);assert.equal(ok.enabled,true);
+  assert.equal(B.parseConfig({}).cfg.tf,'15m');
+  assert.equal(B.parseConfig({ligado:false}).enabled,false);
+  assert.equal(B.parseConfig({parametros:{minScore:3}}).cfg.presetId,'custom');
+  assert.match(B.parseConfig({alavancagem:99}).error,/alavancagem/);
+  assert.match(B.parseConfig({capital:'x'}).error,/número/);
+  assert.match(B.parseConfig({intervalo:'7m'}).error,/intervalo/);
+  assert.match(B.parseConfig({moedas:[]}).error,/moedas/);
+  assert.match(B.parseConfig({moedas:['BTCUSDT','BTCUSDT']}).error,/repetida/);
+  assert.match(B.parseConfig({moedas:['b t c']}).error,/inválida/);
+  assert.match(B.parseConfig({estrategia:'xyz'}).error,/estrategia/);
+  assert.match(B.parseConfig(null).error,/objeto/);
+});
+
+test('applyConfig: liga, troca estrutura com posição aberta e protege o capital',()=>{
+  const cs=series(11,95000,700),st=B.defaults();
+  let notes=B.applyConfig(st,B.parseConfig({moedas:['BTCUSDT'],capital:1000}),1000);
+  assert.equal(st.running,true);assert.equal(st.startedAt,1000);assert.ok(notes.includes('Robô ligado'));
+  st.cursor.BTCUSDT=cs[80].t;
+  B.step(st,{BTCUSDT:cs.slice(0,500)},nowAfter(cs,500));
+  assert.ok(st.trades.length>0);
+  // capital não muda com histórico
+  notes=B.applyConfig(st,B.parseConfig({moedas:['BTCUSDT'],capital:5000}),2000);
+  assert.equal(st.cfg.capital,1000);assert.ok(notes.some(n=>/Capital/.test(n)));
+  // mudar a estratégia vale para as próximas entradas, sem mexer no resto
+  B.applyConfig(st,B.parseConfig({moedas:['BTCUSDT'],estrategia:'agressiva'}),2500);
+  assert.equal(st.params.minScore,3);assert.deepEqual(st.cursor.BTCUSDT,cs[499].t);
+  // mudar moedas encerra o que estiver aberto e zera os cursores
+  st.prices.BTCUSDT=100;
+  const open=B.openTrades(st).length;
+  notes=B.applyConfig(st,B.parseConfig({moedas:['ETHUSDT']}),3000);
+  assert.equal(B.openTrades(st).length,0);assert.deepEqual(st.cursor,{});assert.deepEqual(st.cfg.syms,['ETHUSDT']);
+  if(open)assert.ok(notes.some(n=>/encerrada/.test(n)));
+  // desligar e religar
+  B.applyConfig(st,B.parseConfig({moedas:['ETHUSDT'],ligado:false}),4000);assert.equal(st.running,false);
+  B.applyConfig(st,B.parseConfig({moedas:['ETHUSDT']}),5000);assert.equal(st.running,true);assert.equal(st.startedAt,1000);
+});

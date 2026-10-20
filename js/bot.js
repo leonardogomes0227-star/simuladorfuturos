@@ -143,6 +143,64 @@ function readiness(st,now){
   return {checks:checks,passed:passed,ready:passed===checks.length};
 }
 
-return {CFG_RANGE:CFG_RANGE,defaults:defaults,sanitize:sanitize,step:step,closeAll:closeAll,unrealized:unrealized,aggregate:aggregate,readiness:readiness,
+
+// ---- configuração do servidor (robo/config.json, em português para ser fácil de editar) ----
+var KEY_MAP={capital:['capital','capital'],riscoPorOperacaoPct:['riskPct','riscoPorOperacaoPct'],alavancagem:['lev','alavancagem'],maxPosicoes:['maxOpen','maxPosicoes'],
+  limiteDiarioPct:['dailyPct','limiteDiarioPct'],taxaPorLadoPct:['feePct','taxaPorLadoPct'],derrapagemPorLadoPct:['slipPct','derrapagemPorLadoPct']};
+function parseConfig(conf){
+  if(!conf||typeof conf!=='object'||Array.isArray(conf))return {error:'O arquivo de configuração precisa ser um objeto JSON.'};
+  var cfg={},base=defaults().cfg,k;
+  for(k in KEY_MAP){
+    var field=KEY_MAP[k][0],v=conf[k];
+    if(v==null){cfg[field]=base[field];continue}
+    v=parseFloat(v);
+    if(!isFinite(v))return {error:'"'+k+'" precisa ser um número.'};
+    var r=CFG_RANGE[field];
+    if(v<r[0]||v>r[1])return {error:'"'+k+'" precisa ficar entre '+r[0]+' e '+r[1]+'.'};
+    cfg[field]=field==='maxOpen'?Math.round(v):v;
+  }
+  var tf=conf.intervalo==null?base.tf:conf.intervalo;
+  if(!D.TFS[tf])return {error:'"intervalo" precisa ser um destes: '+Object.keys(D.TFS).join(', ')+'.'};
+  cfg.tf=tf;
+  var syms=conf.moedas==null?base.syms:conf.moedas;
+  if(!Array.isArray(syms)||!syms.length||syms.length>10)return {error:'"moedas" precisa ser uma lista de 1 a 10 pares, como "BTCUSDT".'};
+  var seen={};syms=syms.map(function(x){return String(x).toUpperCase()});
+  for(var i=0;i<syms.length;i++){if(!D.validSymbol(syms[i]))return {error:'Moeda inválida: '+syms[i]+'.'};if(seen[syms[i]])return {error:'Moeda repetida: '+syms[i]+'.'};seen[syms[i]]=1}
+  cfg.syms=syms;
+  var params,presetId;
+  if(conf.parametros!=null){
+    if(typeof conf.parametros!=='object'||Array.isArray(conf.parametros))return {error:'"parametros" precisa ser um objeto.'};
+    params=E.normParams(conf.parametros);presetId='custom';
+  }else{
+    var key=conf.estrategia==null?'padrao':String(conf.estrategia);
+    if(!E.PRESETS[key])return {error:'"estrategia" precisa ser uma destas: '+Object.keys(E.PRESETS).join(', ')+' (ou use "parametros").'};
+    params=E.normParams(E.PRESETS[key].p);presetId=key;
+  }
+  cfg.presetId=presetId;cfg.notify=false;
+  return {enabled:conf.ligado!==false,cfg:cfg,params:params};
+}
+// Aplica a configuração lida ao estado. Mudar intervalo ou moedas encerra posições abertas (os cursores deixam de valer).
+function applyConfig(st,parsed,now){
+  var notes=[],c=st.cfg,n=parsed.cfg;
+  var structural=n.tf!==c.tf||n.syms.join(',')!==c.syms.join(',');
+  if(structural){
+    if(openTrades(st).length){var out=closeAll(st,st.prices,now);notes.push('Configuração mudou: '+out.length+' posição(ões) encerrada(s) ao último preço')}
+    st.cursor={};
+  }
+  Object.keys(CFG_RANGE).forEach(function(f){
+    if(f==='capital'&&st.trades.length&&n.capital!==c.capital){notes.push('Capital só muda com o histórico zerado; mantido em '+c.capital);return}
+    c[f]=n[f];
+  });
+  c.tf=n.tf;c.syms=n.syms;c.presetId=n.presetId;st.params=parsed.params;
+  if(parsed.enabled&&!st.running){
+    st.running=true;if(!st.startedAt)st.startedAt=now;
+    if(!openTrades(st).length)st.cursor={};
+    notes.push('Robô ligado');
+  }else if(!parsed.enabled&&st.running){st.running=false;notes.push('Robô desligado pela configuração')}
+  notes.forEach(function(x){pushLog(st,x)});
+  return notes;
+}
+
+return {parseConfig:parseConfig,applyConfig:applyConfig,CFG_RANGE:CFG_RANGE,defaults:defaults,sanitize:sanitize,step:step,closeAll:closeAll,unrealized:unrealized,aggregate:aggregate,readiness:readiness,
   balance:balance,openTrades:openTrades,closedTrades:closedTrades,dayPnl:dayPnl,closedOnly:closedOnly};
 });
