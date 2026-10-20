@@ -92,11 +92,19 @@ async function run({ configPath, statePath, fetchImpl, now, telegram }) {
       D.fetchKlines(sym, tf, 500, fetchImpl)
         .then((cs) => ({ sym, cs }))
         .catch((e) => { meta.errors.push(sym + ': ' + e.message); return null; })));
-    const data = {};
+    const data = {}, dataHtf = {};
     let ok = 0;
     res.forEach((r) => { if (r) { data[r.sym] = r.cs; st.prices[r.sym] = r.cs[r.cs.length - 1].c; ok++; } });
+    // intervalo maior para confirmar a tendência (15m com 4h, 1h com 4h, 4h com 1d...)
+    const mTf = D.macroTf(tf);
+    if (ok && st.params.htf > 0 && mTf) {
+      await Promise.all(Object.keys(data).map((sym) => D.fetchKlines(sym, mTf, 500, fetchImpl)
+        .then((cs) => { dataHtf[sym] = cs; })
+        .catch((e) => { meta.errors.push(sym + ' (' + mTf + '): ' + e.message); })));
+    }
+    meta.macro = st.params.htf > 0 ? { tf: mTf, ok: Object.keys(dataHtf).length, total: Object.keys(data).length } : null;
     if (ok) {
-      const events = Bot.step(st, data, now);
+      const events = Bot.step(st, data, now, dataHtf);
       meta.notify = await notify(events, Bot.readiness(st, now).ready, telegram, fetchImpl, now, D.TFS[tf]);
       meta.lastOk = now;
       meta.net = ok < syms.length ? 'part' : 'ok';

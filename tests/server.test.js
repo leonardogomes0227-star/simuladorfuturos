@@ -162,3 +162,30 @@ test('teste do Telegram: avisa quando faltam credenciais, envia quando há e mos
   r=await run({...t,fetchImpl:ok,now:nowFor(340),telegram:{token:'SEGREDO',chatId:'42'}});
   assert.equal(r.meta.telegramTest,undefined);
 });
+
+
+test('servidor busca o intervalo maior e só abre posição a favor dele',async()=>{
+  const aggRows=(rows,k)=>{const out=[];for(let i=0;i+k<=rows.length;i+=k){const g=rows.slice(i,i+k);out.push([g[0][0],g[0][1],String(Math.max(...g.map(r=>+r[2]))),String(Math.min(...g.map(r=>+r[3]))),g[g.length-1][4],String(g.reduce((a,r)=>a+(+r[5]),0)),0])}return out};
+  const calls=[];
+  const f=(u)=>{
+    const url=new URL(u),sym=url.searchParams.get('symbol'),iv=url.searchParams.get('interval'),lim=+url.searchParams.get('limit');calls.push(sym+':'+iv);
+    const all=DATA[sym];const rows=iv==='4h'?aggRows(all.slice(0,N),16):all.slice(0,N);
+    return Promise.resolve({ok:true,status:200,json:()=>Promise.resolve(rows.slice(Math.max(0,rows.length-lim)))});
+  };
+  const conf={ligado:true,estrategia:'padrao',intervalo:'15m',moedas:['BTCUSDT','ETHUSDT'],confirmacaoMacro:true};
+  const a=tmp(conf),b=tmp({...conf,confirmacaoMacro:false});
+  N=300;await run({...a,fetchImpl:f,now:nowFor(300)});await run({...b,fetchImpl:f,now:nowFor(300)});
+  let last;for(N=340;N<=800;N+=40)last=await run({...a,fetchImpl:f,now:nowFor(N)});
+  for(N=340;N<=800;N+=40)await run({...b,fetchImpl:f,now:nowFor(N)});
+  assert.ok(calls.includes('BTCUSDT:4h')&&calls.includes('ETHUSDT:4h'),'buscou o intervalo maior');
+  assert.deepEqual(last.meta.macro,{tf:'4h',ok:2,total:2});
+  const sa=JSON.parse(fs.readFileSync(a.statePath)).state,sb=JSON.parse(fs.readFileSync(b.statePath)).state;
+  assert.equal(sa.params.htf,1);assert.equal(sb.params.htf,0);
+  assert.ok(sa.trades.length<=sb.trades.length,'o filtro só reduz operações');
+  // falha ao buscar o intervalo maior: registra o erro, não abre posição nova e não derruba a rodada
+  const c=tmp(conf);N=300;await run({...c,fetchImpl:f,now:nowFor(300)});
+  const f2=(u)=>/interval=4h/.test(u)?Promise.reject(new Error('rede')):f(u);
+  let r;for(N=340;N<=800;N+=40)r=await run({...c,fetchImpl:f2,now:nowFor(N)});
+  const sc=JSON.parse(fs.readFileSync(c.statePath)).state;
+  assert.equal(sc.trades.length,0);assert.equal(r.meta.macro.ok,0);assert.ok(r.meta.errors.some(e=>/\(4h\)/.test(e)));assert.equal(r.meta.net,'ok');
+});

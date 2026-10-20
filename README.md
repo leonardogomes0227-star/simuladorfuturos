@@ -23,6 +23,37 @@ Site estático, sem build e sem dependências. Abra `index.html` por um servidor
 - **Risco**: limite diário e semanal, pausa após perdas seguidas, risco aberto máximo, alerta de posições correlacionadas e preço de liquidação.
 - **App**: PWA instalável e offline, tema claro/escuro, atalhos de teclado (`?` mostra a lista), backup em JSON.
 
+## Arquitetura
+
+```
+Binance ──► data.js ──► engine.js ──► radar.js ──► tela Hoje (semáforo por moeda)
+ (REST/WS)  tentativas,   indicadores,   só vela     app.js + css
+            disjuntor,    ADX, intervalo fechada,
+            saúde dos     maior, lista    semáforo
+            dados         de critérios        │
+                              │               └──► narrativa.js (frases claras)
+                              ├──► bot.js ──► server/run-bot.js (GitHub Actions, a cada ~5 min)
+                              └──► server/research.js (validação walk-forward)
+```
+
+Regra de ouro: **nenhum módulo de lógica toca no DOM**. `data`, `engine`, `metrics`, `radar`, `narrativa`, `hoje`, `bot` rodam igual no navegador, no servidor e nos testes; só `app.js` conhece a tela.
+
+### Filtros de segurança (o semáforo)
+
+Cada moeda é analisada **só com velas fechadas** (a vela em formação é descartada antes de qualquer conta) e recebe uma cor:
+
+| Cor | Quando |
+| --- | --- |
+| 🟢 Pronto para operar | todos os critérios obrigatórios passaram na última vela fechada e os dados estão em dia |
+| 🟡 Mercado lateral ou atenção | ADX abaixo do mínimo (mercado travado), preço esticado (RSI) ou faltou pouco para os critérios fecharem |
+| 🔴 Fora dos critérios | sem alinhamento, **contra a tendência do intervalo maior**, ou dados atrasados |
+
+Critérios obrigatórios: força da tendência (ADX ≥ mínimo, padrão 20), médias para o mesmo lado, pontuação mínima, sem exagero de RSI e, com `confirmacaoMacro`, **alinhamento com a tendência do intervalo maior** (15m↔4h, 1h↔4h, 4h↔1d). A tendência maior de cada vela usa só velas do intervalo maior **já fechadas naquele instante** (teste automático garante que cortar o fim dos dados não muda o passado). Sem dados do intervalo maior, o sistema falha para o lado seguro: não abre posição nova.
+
+### Resiliência dos dados
+
+`data.js` tenta de novo com espera crescente (400 ms, 800 ms…), respeita `Retry-After` do erro 429, pula direto para o servidor reserva em 451/403 (bloqueio regional), abre um "disjuntor" depois de falhas seguidas, corrige/descarta velas inválidas e mede a saúde da série (atraso da última vela fechada e buracos). Ao vivo, uma vela que pula o intervalo dispara a reconstrução pelo REST e, a cada minuto, as últimas velas são reconciliadas mesmo com o WebSocket ligado.
+
 ## Pesquisa e "treino" da estratégia
 
 `server/research.js` faz **otimização walk-forward**: escolhe os parâmetros numa janela de 9 meses e testa nos 3 meses seguintes, que o otimizador nunca viu, repetindo ao longo de 2,5 anos de dados reais de várias moedas, já com taxa e derrapagem. Só o resultado fora da amostra conta. Se ele não mostrar vantagem, o relatório diz **NÃO RECOMENDADA**. Rode em Actions → *Pesquisa da estratégia*.
@@ -45,6 +76,8 @@ Estrutura:
 | `js/data.js` | Cliente da Binance: REST, WebSocket, fallback (testado com `fetch` simulado) |
 | `js/bot.js` | Robô de simulação: passo a passo determinístico, recuperação, prontidão (puro, testado) |
 | `server/run-bot.js` | Uma checagem do robô no servidor (lê a config, busca velas, grava o estado) |
+| `js/radar.js` | Semáforo por moeda: junta intervalo base e maior, só vela fechada (puro, testado) |
+| `js/narrativa.js` | Traduz logs, erros e operações em frases claras (puro, testado) |
 | `js/hoje.js` | Veredito do dia, tamanho de posição e janela de entrada (puro, testado) |
 | `js/app.js` | Interface e estado |
 | `sw.js` | Cache offline. **Mude `VERSION` a cada publicação.** |

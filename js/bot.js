@@ -75,8 +75,10 @@ function nextId(st,sym,t){return sym+'-'+t+'-'+st.trades.length}
 
 // Processa as velas fechadas novas de cada ativo, em ordem cronológica.
 // data: {BTCUSDT:[velas...]}. Devolve os eventos {type:'open'|'close',trade}.
-function step(st,data,now){
+// dataHtf (opcional): velas do intervalo maior de cada ativo, usadas quando params.htf está ligado.
+function step(st,data,now,dataHtf){
   var tfMs=D.TFS[st.cfg.tf],events=[],queue=[],slip=st.cfg.slipPct/100,ctx={};
+  var mTf=D.macroTf(st.cfg.tf),mMs=mTf?D.TFS[mTf]:0,useHtf=st.params.htf>0;
   st.cfg.syms.forEach(function(sym,order){
     var raw=data[sym];if(!raw||!raw.length)return;
     var cs=closedOnly(raw,tfMs,now);if(!cs.length)return;
@@ -85,7 +87,9 @@ function step(st,data,now){
     var s=0;while(s<cs.length&&cs[s].t<=st.cursor[sym])s++;
     if(s===0&&cs[0].t>st.cursor[sym]+tfMs){st.gaps++;pushLog(st,sym+': faltou histórico entre as checagens, algumas velas não foram analisadas')}
     if(s>=cs.length)return;
-    ctx[sym]={cs:cs,ind:E.computeIndicators(cs,st.params)};
+    var rawH=useHtf&&dataHtf&&mMs?dataHtf[sym]:null,csH=rawH&&rawH.length?closedOnly(rawH,mMs,now):[];
+    if(useHtf&&!csH.length){var msg=sym+': sem dados do intervalo maior ('+(mTf||'indisponível')+'); sem novos sinais até voltar';if(st.log[st.log.length-1]!==msg)pushLog(st,msg)}
+    ctx[sym]={cs:cs,ind:E.computeIndicators(cs,st.params,csH)};
     for(var i=s;i<cs.length;i++)queue.push({t:cs[i].t,sym:sym,i:i,order:order});
   });
   queue.sort(function(a,b){return a.t-b.t||a.order-b.order});
@@ -195,6 +199,10 @@ function parseConfig(conf){
     params=E.normParams(E.PRESETS[key].p);presetId=key;
   }
   cfg.presetId=presetId;cfg.notify=false;
+  if(conf.confirmacaoMacro!=null){
+    if(typeof conf.confirmacaoMacro!=='boolean')return {error:'"confirmacaoMacro" precisa ser true ou false.'};
+    params=E.normParams(Object.assign({},params,{htf:conf.confirmacaoMacro?1:0}));
+  }
   var token=conf.zerarHistorico==null?'':String(conf.zerarHistorico).slice(0,40);
   return {enabled:conf.ligado!==false,cfg:cfg,params:params,resetToken:token};
 }
