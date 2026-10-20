@@ -20,7 +20,7 @@
       <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="var(--accent)"/><path d="M7 21l5-6 4 3 7-9" fill="none" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23" cy="9" r="2.2" fill="var(--accent-ink)"/></svg>
       <span class="logo-text"><b>Radar de Futuros</b><small>STCK.Labs</small></span>
     </a>
-    <span class="pill-sim" title="Este painel não envia ordens. Todas as operações são simuladas.">Simulação · sem dinheiro real</span>
+    <span class="pill-sim" title="Este painel não envia ordens.">Simulação</span>
     <span class="status" id="liveStatus" role="status" aria-live="polite"></span>
     <div class="tick"><span id="price" class="num"></span><span id="chg" class="num"></span></div>
     <div class="top-actions">
@@ -38,14 +38,12 @@
   <p id="msg" class="msg" role="status" aria-live="polite"></p>
 
   <div id="viewHoje">
-    <div class="hj-ticker" id="hjTicker" aria-label="Mercado agora"></div>
-    <section class="card hj-verdict" id="hjVerdict" aria-live="polite"></section>
-    <section class="card hj-radar" id="hjRadar"></section>
-    <section class="card hj-signals" id="hjSignals"></section>
-    <aside class="hj-side">
-      <section class="card" id="hjMy">
-        <h2>Meu dinheiro</h2>
-        <p class="note">Fica só no seu aparelho. Serve para calcular o tamanho de cada operação.</p>
+    <div class="hj-ticker" id="hjTicker" aria-label="Moedas acompanhadas"></div>
+    <div class="hj-status" id="hjVerdict" aria-live="polite"></div>
+    <section class="hj-signals" id="hjSignals" aria-label="Sinais"></section>
+    <details class="hj-size" id="hjMy">
+      <summary>Tamanho da posição</summary>
+      <div class="hj-size-body">
         <div class="field">
           <span class="flabel">Quanto vou usar</span>
           <div class="inputgroup">
@@ -62,15 +60,8 @@
           <div class="seg wide" id="hjLevSeg" data-key="lev" role="group" aria-label="Alavancagem máxima"><button type="button" data-v="1">1x</button><button type="button" data-v="2">2x</button><button type="button" data-v="3">3x</button></div>
         </div>
         <div id="hjLimits"></div>
-      </section>
-      <section class="card" id="hjRules"></section>
-      <details class="card" id="hjBot">
-        <summary><h2>Como o robô está indo</h2></summary>
-        <div class="stats" id="hjStats"></div>
-        <div id="hjGate"></div>
-        <p class="note">Detalhes, histórico e configuração na aba Robô.</p>
-      </details>
-    </aside>
+      </div>
+    </details>
   </div>
 
   <div id="viewBot" hidden>
@@ -87,7 +78,7 @@
       <div class="bot-main">
     <section class="card"><h2>Saldo do robô</h2><div id="botCurve"></div></section>
     <section class="card"><h2>Posições abertas</h2><div id="botOpen"></div></section>
-    <section class="card"><h2>O que o robô fez</h2><div id="botHist"></div></section>
+    <section class="card"><h2>Histórico</h2><div id="botHist"></div></section>
       </div>
       <aside class="bot-side">
     <section class="card" id="botSrv" hidden></section>
@@ -125,7 +116,6 @@
 
     <details class="card" id="botTestCard">
       <summary><h2>Testar a estratégia antes de ligar</h2></summary>
-      <p class="note">Roda cada estratégia nas últimas 1.000 velas das moedas escolhidas. É uma amostra curta: serve para descartar o que claramente não funciona, não para provar que algo funciona.</p>
       <div class="toolrow"><button id="bTestBtn" class="btn primary" type="button">Testar agora</button></div>
       <div id="bTestOut"></div>
     </details>
@@ -318,7 +308,7 @@
     <p class="note" id="usage"></p>
   </details>
 
-  <p class="foot">Painel educacional. Não envia ordens e não é recomendação de investimento. Futuros com alavancagem podem causar perdas maiores que o valor investido. Dados de mercado: API pública da Binance. <span class="ver" id="ver"></span></p>
+  <p class="foot">Não envia ordens nem é recomendação de investimento. Alavancagem pode causar perdas maiores que o valor investido. <span class="ver" id="ver"></span></p>
 </div>
 
 <dialog id="helpDlg" aria-labelledby="helpTitle">
