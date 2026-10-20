@@ -1430,6 +1430,7 @@ function setView(v){
 /* ---------- início ---------- */
 function init(){
   var saved=load();
+  $('ver').textContent='Versão '+(window.RADAR_VERSION||'?');
   try{applyTheme(localStorage.getItem(THEME_KEY)||'auto')}catch(e){applyTheme('auto')}
   matchPreset();
   $('symlist').innerHTML=D.POPULAR.map(function(s){return '<option value="'+s+'">'}).join('');
@@ -1449,7 +1450,10 @@ function init(){
   if(L.running){startBotTimer();botTick()}
   D.fetchSymbols().then(function(list){if(list.length)$('symlist').innerHTML=list.map(function(s){return '<option value="'+s+'">'}).join('')}).catch(function(){});
   if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
-    window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});
+    // se uma versão nova assumir o controle de quem já tinha o app, recarrega uma vez para não ficar com arquivos velhos
+    var hadCtl=!!navigator.serviceWorker.controller,reloaded=false;
+    navigator.serviceWorker.addEventListener('controllerchange',function(){if(hadCtl&&!reloaded){reloaded=true;location.reload()}});
+    window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').then(function(r){try{r.update()}catch(e){}}).catch(function(){})});
   }
 }
 init();
