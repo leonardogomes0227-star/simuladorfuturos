@@ -1,8 +1,15 @@
 {
   "ligado": true,
-  "estrategia": "padrao",
-  "intervalo": "1h",
+  "intervalo": "4h",
   "moedas": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  "parametros": {
+    "minScore": 4,
+    "adxMin": 25,
+    "stopAtr": 2.5,
+    "rr": 3,
+    "trendP": 200,
+    "beR": 1
+  },
   "capital": 1000,
   "riscoPorOperacaoPct": 1,
   "alavancagem": 3,
@@ -10,5 +17,5 @@
   "limiteDiarioPct": 3,
   "taxaPorLadoPct": 0.05,
   "derrapagemPorLadoPct": 0.02,
-  "zerarHistorico": "fase2-1h"
+  "zerarHistorico": "fase3-4h-candidata"
 }

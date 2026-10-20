@@ -16,7 +16,12 @@ on:
         default: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT'
 
 permissions:
-  contents: read
+  contents: write
+
+# o mesmo grupo do robô: as duas execuções gravam na branch robo-estado e não podem se atropelar
+concurrency:
+  group: robo-24h
+  cancel-in-progress: false
 
 jobs:
   pesquisar:
@@ -29,8 +34,31 @@ jobs:
           node-version: 22
       - run: npm test
       - name: Rodar a pesquisa
-        run: node server/research.js --tf "${{ inputs.intervalo }}" --months "${{ inputs.meses }}" --coins "${{ inputs.moedas }}" --out pesquisa.json
+        run: node server/research.js --tf "${{ inputs.intervalo }}" --months "${{ inputs.meses }}" --coins "${{ inputs.moedas }}" --out "pesquisa-${{ inputs.intervalo }}.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: pesquisa
-          path: pesquisa.json
+          name: pesquisa-${{ inputs.intervalo }}
+          path: pesquisa-${{ inputs.intervalo }}.json
+      - name: Guardar o veredito para o site e o robô
+        run: |
+          set -e
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$URL" robo-estado >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch robo-estado "$URL" estado
+          else
+            git init -q estado
+            git -C estado checkout -q --orphan robo-estado
+            git -C estado remote add origin "$URL"
+          fi
+          cp "pesquisa-${{ inputs.intervalo }}.json" estado/
+          cd estado
+          printf '{"git":{"deploymentEnabled":false},"ignoreCommand":"exit 0"}\n' > vercel.json
+          git config user.name "robo-24h"
+          git config user.email "robo-24h@users.noreply.github.com"
+          git add -A
+          if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git commit -q --amend -m "estado do robô"
+          else
+            git commit -q -m "estado do robô"
+          fi
+          git push -q --force origin robo-estado

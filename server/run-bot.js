@@ -40,6 +40,15 @@ async function notify(events, ready, tg, fetchImpl, now, tfMs) {
   return out;
 }
 
+// Resultado da pesquisa walk-forward (pesquisa-<intervalo>.json), gravado pelo workflow de pesquisa ao lado do estado.
+function readPesquisa(statePath, tf) {
+  const j = readJson(path.join(path.dirname(statePath), 'pesquisa-' + tf + '.json'));
+  if (!j || !j.verdict || !j.oos) return null;
+  if (j.tf !== tf) return { mismatch: true, tf: j.tf };
+  return { tf, generatedAt: j.generatedAt, recommended: !!j.verdict.recommended, passed: j.verdict.passed, total: j.verdict.checks.length,
+    oosN: j.oos.n, oosAvgR: j.oos.avgR, oosPf: isFinite(j.oos.pf) ? j.oos.pf : null, coins: (j.coins || []).length };
+}
+
 async function run({ configPath, statePath, fetchImpl, now, telegram }) {
   now = now || Date.now();
   const file = readJson(statePath) || {};
@@ -74,6 +83,7 @@ async function run({ configPath, statePath, fetchImpl, now, telegram }) {
       meta.net = 'off';
     }
   }
+  meta.pesquisa = readPesquisa(statePath, st.cfg.tf);
   meta.lastRun = now;
   meta.runs += 1;
   meta.running = st.running;

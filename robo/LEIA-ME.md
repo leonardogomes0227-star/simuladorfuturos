@@ -6,7 +6,7 @@ Edite `config.json` neste mesmo diretório (no GitHub: abra o arquivo, clique no
 | --- | --- | --- |
 | `ligado` | liga ou desliga o robô | `true` ou `false` |
 | `estrategia` | regra de entrada | `padrao`, `conservadora`, `agressiva`, `lenta` |
-| `parametros` | opcional: troca `estrategia` por números seus (`emaF`, `emaM`, `emaS`, `adxMin`, `minScore`, `stopAtr`, `rr`) | objeto |
+| `parametros` | opcional: troca `estrategia` por números seus: `emaF`, `emaM`, `emaS`, `adxMin`, `minScore`, `stopAtr`, `rr` e os recursos extras `trendP` (média longa de tendência), `beR` (stop no breakeven após esse lucro em R), `trailAtr` (stop móvel em ATR), `maxBars` (saída por tempo), `atrMinPct`/`atrMaxPct` (filtro de volatilidade) e `cooldown` (pausa em velas depois de uma perda). Tudo que não for informado fica desligado | objeto |
 | `intervalo` | tamanho da vela | `1m`, `5m`, `15m`, `1h`, `4h`, `1d` |
 | `moedas` | pares USDT da Binance | de 1 a 10, ex.: `"SUIUSDT"` |
 | `capital` | saldo inicial simulado | 10 a 10.000.000 |
@@ -33,3 +33,7 @@ O robô pode te avisar quando surgir um sinal novo ou quando uma operação fech
 3. No GitHub: **Settings → Secrets and variables → Actions → New repository secret**. Crie `TELEGRAM_BOT_TOKEN` (o token) e `TELEGRAM_CHAT_ID` (o número).
 
 Enquanto o robô estiver em simulação, todo aviso vem marcado como **SIMULAÇÃO**. O GitHub pode atrasar as rodadas agendadas em algumas horas; por isso o aviso diz até onde o preço ainda vale a entrada.
+
+## Validação em anos de dados reais
+
+O site só libera "HÁ OPORTUNIDADE" quando a pesquisa walk-forward do **mesmo intervalo** do robô for aprovada, além do histórico do próprio robô. Rode em Actions → *Pesquisa da estratégia* (informe o mesmo intervalo do `config.json`); o veredito é gravado ao lado do estado do robô e aparece na tela Hoje. Se a pesquisa for reprovada, a tela fica em **SÓ SIMULAR**.
