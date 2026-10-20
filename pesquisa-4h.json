@@ -1,0 +1,217 @@
+{
+ "generatedAt": 1792493964499,
+ "tf": "4h",
+ "coins": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "SOLUSDT",
+  "BNBUSDT",
+  "XRPUSDT",
+  "ADAUSDT"
+ ],
+ "verdict": {
+  "checks": [
+   {
+    "ok": true,
+    "label": "Pelo menos 100 operações fora da amostra",
+    "detail": "1386"
+   },
+   {
+    "ok": false,
+    "label": "Média de pelo menos +0,05R por operação",
+    "detail": "0.028R"
+   },
+   {
+    "ok": false,
+    "label": "Fator de lucro de pelo menos 1,15",
+    "detail": "1.05"
+   },
+   {
+    "ok": false,
+    "label": "Lucro em pelo menos 60% das janelas de teste",
+    "detail": "11 de 20"
+   },
+   {
+    "ok": false,
+    "label": "Melhor que a estratégia padrão sem otimização",
+    "detail": "39.3R contra 43.2R"
+   }
+  ],
+  "passed": 1,
+  "recommended": false
+ },
+ "oos": {
+  "n": 1386,
+  "wins": 565,
+  "winRate": 40.76479076479077,
+  "totalR": 39.27441488187452,
+  "avgR": 0.02833651867379114,
+  "std": 1.2889975368593287,
+  "tStat": 0.8184195988350823,
+  "pf": 1.0533144051093664,
+  "maxDD": 44.34160247830151
+ },
+ "baseline": {
+  "n": 2551,
+  "wins": 920,
+  "winRate": 36.06428851430811,
+  "totalR": 43.20280740047633,
+  "avgR": 0.016935635986074612,
+  "std": 1.415981896756153,
+  "tStat": 0.6040863726328186,
+  "pf": 1.0255936907985468,
+  "maxDD": 72.8011812854399
+ },
+ "finals": [
+  {
+   "params": {
+    "emaF": 9,
+    "emaM": 21,
+    "emaS": 50,
+    "adxMin": 25,
+    "minScore": 4,
+    "stopAtr": 2.5,
+    "rr": 3,
+    "trendP": 200,
+    "beR": 0,
+    "trailAtr": 0,
+    "maxBars": 0,
+    "atrMinPct": 0,
+    "atrMaxPct": 0,
+    "cooldown": 0
+   },
+   "s": {
+    "n": 125,
+    "wins": 45,
+    "winRate": 36,
+    "totalR": 40.88238181088712,
+    "avgR": 0.32705905448709693,
+    "std": 1.8611817299346878,
+    "tStat": 1.96468261730578,
+    "pf": 1.4972059743923372,
+    "maxDD": 22.07197965606775
+   },
+   "positiveQuarters": 3
+  },
+  {
+   "params": {
+    "emaF": 9,
+    "emaM": 21,
+    "emaS": 50,
+    "adxMin": 25,
+    "minScore": 4,
+    "stopAtr": 2.5,
+    "rr": 3,
+    "trendP": 200,
+    "beR": 1,
+    "trailAtr": 0,
+    "maxBars": 0,
+    "atrMinPct": 0,
+    "atrMaxPct": 0,
+    "cooldown": 0
+   },
+   "s": {
+    "n": 187,
+    "wins": 45,
+    "winRate": 24.06417112299465,
+    "totalR": 36.676102283349046,
+    "avgR": 0.1961288892157703,
+    "std": 1.5186771784494029,
+    "tStat": 1.7660252359664208,
+    "pf": 1.4329422453908796,
+    "maxDD": 17.832394975801968
+   },
+   "positiveQuarters": 4
+  },
+  {
+   "params": {
+    "emaF": 9,
+    "emaM": 21,
+    "emaS": 50,
+    "adxMin": 25,
+    "minScore": 4,
+    "stopAtr": 2.5,
+    "rr": 3,
+    "trendP": 0,
+    "beR": 0,
+    "trailAtr": 0,
+    "maxBars": 0,
+    "atrMinPct": 0,
+    "atrMaxPct": 0,
+    "cooldown": 0
+   },
+   "s": {
+    "n": 139,
+    "wins": 46,
+    "winRate": 33.093525179856115,
+    "totalR": 33.910057807279316,
+    "avgR": 0.2439572504120814,
+    "std": 1.8356611273902625,
+    "tStat": 1.566854317922664,
+    "pf": 1.356939206025587,
+    "maxDD": 29.32724761742381
+   },
+   "positiveQuarters": 3
+  },
+  {
+   "params": {
+    "emaF": 9,
+    "emaM": 21,
+    "emaS": 50,
+    "adxMin": 25,
+    "minScore": 4,
+    "stopAtr": 2.5,
+    "rr": 2,
+    "trendP": 200,
+    "beR": 0,
+    "trailAtr": 0,
+    "maxBars": 0,
+    "atrMinPct": 0,
+    "atrMaxPct": 0,
+    "cooldown": 0
+   },
+   "s": {
+    "n": 194,
+    "wins": 79,
+    "winRate": 40.72164948453608,
+    "totalR": 29.805111035293425,
+    "avgR": 0.15363459296543003,
+    "std": 1.450141017758579,
+    "tStat": 1.4756373603838708,
+    "pf": 1.2520389670707877,
+    "maxDD": 23.17662160849136
+   },
+   "positiveQuarters": 4
+  },
+  {
+   "params": {
+    "emaF": 9,
+    "emaM": 21,
+    "emaS": 50,
+    "adxMin": 25,
+    "minScore": 5,
+    "stopAtr": 2.5,
+    "rr": 3,
+    "trendP": 0,
+    "beR": 0,
+    "trailAtr": 0,
+    "maxBars": 0,
+    "atrMinPct": 0,
+    "atrMaxPct": 0,
+    "cooldown": 0
+   },
+   "s": {
+    "n": 113,
+    "wins": 39,
+    "winRate": 34.51327433628318,
+    "totalR": 27.81555806246006,
+    "avgR": 0.24615538108371735,
+    "std": 1.8229717845640458,
+    "tStat": 1.4353856793976338,
+    "pf": 1.3675841689191166,
+    "maxDD": 30.09583339636815
+   },
+   "positiveQuarters": 2
+  }
+ ]
+}
