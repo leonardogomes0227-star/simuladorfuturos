@@ -71,6 +71,31 @@ function fetchKlines(sym,tf,limit,fetchImpl){
   }
   return next();
 }
+// Histórico longo: busca em páginas de 1000 velas entre startMs e endMs.
+function fetchKlinesRange(sym,tf,startMs,endMs,fetchImpl){
+  fetchImpl=fetchImpl||fetch;
+  if(!validSymbol(sym))return Promise.reject(new Error('Símbolo inválido'));
+  if(!TFS[tf])return Promise.reject(new Error('Intervalo inválido'));
+  var all=[],cursor=startMs,step=TFS[tf];
+  function page(){
+    if(cursor>=endMs)return Promise.resolve(all);
+    var i=0;
+    function host(err){
+      if(i>=HOSTS.length)return Promise.reject(err||new Error('Sem resposta'));
+      var url=klinesUrl(HOSTS[i++],sym,tf,1000)+'&startTime='+cursor+'&endTime='+endMs;
+      return fetchJson(url,fetchImpl,20000).then(parseKlines).catch(host);
+    }
+    return host().then(function(cs){
+      if(!cs.length)return all;
+      all=all.concat(cs.filter(function(c){return !all.length||c.t>all[all.length-1].t}));
+      var next=cs[cs.length-1].t+step;
+      if(next<=cursor)return all;
+      cursor=next;
+      return cs.length<1000?all:page();
+    });
+  }
+  return page();
+}
 // Preço atual de vários pares de uma vez: {BTCUSDT: 81234.5, ...}
 function fetchPrices(symbols,fetchImpl){
   fetchImpl=fetchImpl||fetch;
@@ -103,5 +128,5 @@ function fetchSymbols(fetchImpl){
 }
 
 return {TFS:TFS,POPULAR:POPULAR,MAX_CANDLES:MAX_CANDLES,validSymbol:validSymbol,normSymbol:normSymbol,parseKlines:parseKlines,klineFromWs:klineFromWs,
-  applyKline:applyKline,wsUrl:wsUrl,klinesUrl:klinesUrl,fetchKlines:fetchKlines,fetchPrices:fetchPrices,fetchSymbols:fetchSymbols};
+  applyKline:applyKline,wsUrl:wsUrl,klinesUrl:klinesUrl,fetchKlines:fetchKlines,fetchKlinesRange:fetchKlinesRange,fetchPrices:fetchPrices,fetchSymbols:fetchSymbols};
 });

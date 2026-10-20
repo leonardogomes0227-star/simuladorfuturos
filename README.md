@@ -23,6 +23,12 @@ Site estático, sem build e sem dependências. Abra `index.html` por um servidor
 - **Risco**: limite diário e semanal, pausa após perdas seguidas, risco aberto máximo, alerta de posições correlacionadas e preço de liquidação.
 - **App**: PWA instalável e offline, tema claro/escuro, atalhos de teclado (`?` mostra a lista), backup em JSON.
 
+## Pesquisa e "treino" da estratégia
+
+`server/research.js` faz **otimização walk-forward**: escolhe os parâmetros numa janela de 9 meses e testa nos 3 meses seguintes, que o otimizador nunca viu, repetindo ao longo de 2,5 anos de dados reais de várias moedas, já com taxa e derrapagem. Só o resultado fora da amostra conta. Se ele não mostrar vantagem, o relatório diz **NÃO RECOMENDADA**. Rode em Actions → *Pesquisa da estratégia*.
+
+Recursos que a estratégia pode usar (todos desligados por padrão): filtro de tendência longa, filtro de volatilidade, stop no breakeven, stop móvel (trailing), saída por tempo e pausa depois de um stop. O robô e o backtest usam exatamente a mesma regra (`E.stepTrade`), com teste automático garantindo que produzem as mesmas operações.
+
 ## Desenvolvimento
 
 ```

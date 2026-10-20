@@ -60,3 +60,17 @@ test('fetchPrices lê vários pares e usa o espelho se o principal falhar',async
   assert.deepEqual(await D.fetchPrices([],()=>{throw new Error('não deve chamar')}),{});
   await assert.rejects(D.fetchPrices(['BTCUSDT'],()=>Promise.reject(new Error('rede'))),/rede/);
 });
+
+test('fetchKlinesRange pagina, não repete velas e para no fim',async()=>{
+  const STEP=3600000,all=[];for(let i=0;i<2500;i++)all.push(row(i*STEP,100+i));
+  const urls=[];
+  const f=u=>{urls.push(u);const url=new URL(u),st=+url.searchParams.get('startTime'),en=+url.searchParams.get('endTime'),lim=+url.searchParams.get('limit');
+    return ok(all.filter(r=>r[0]>=st&&r[0]<=en).slice(0,lim))};
+  const cs=await D.fetchKlinesRange('BTCUSDT','1h',0,2499*STEP,f);
+  assert.equal(cs.length,2500);assert.equal(urls.length,3);
+  for(let i=1;i<cs.length;i++)assert.equal(cs[i].t-cs[i-1].t,STEP);
+  assert.deepEqual((await D.fetchKlinesRange('BTCUSDT','1h',5*STEP,5*STEP+1,f)).length,1);
+  await assert.rejects(D.fetchKlinesRange('btc','1h',0,1,f),/inválido/);
+  await assert.rejects(D.fetchKlinesRange('BTCUSDT','1h',0,10*STEP,()=>Promise.reject(new Error('rede'))),/rede/);
+  assert.equal((await D.fetchKlinesRange('BTCUSDT','1h',0,10*STEP,()=>ok([]))).length,0);
+});

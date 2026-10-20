@@ -1,0 +1,36 @@
+name: Pesquisa da estratégia
+
+# Baixa histórico real da Binance e roda a validação walk-forward (server/research.js).
+# Manual: Actions → Pesquisa da estratégia → Run workflow. O relatório sai no log e no resumo da execução.
+on:
+  workflow_dispatch:
+    inputs:
+      intervalo:
+        description: 'Tamanho da vela (1h ou 4h)'
+        default: '1h'
+      meses:
+        description: 'Meses de histórico'
+        default: '30'
+      moedas:
+        description: 'Pares separados por vírgula'
+        default: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT'
+
+permissions:
+  contents: read
+
+jobs:
+  pesquisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - name: Rodar a pesquisa
+        run: node server/research.js --tf "${{ inputs.intervalo }}" --months "${{ inputs.meses }}" --coins "${{ inputs.moedas }}" --out pesquisa.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pesquisa
+          path: pesquisa.json

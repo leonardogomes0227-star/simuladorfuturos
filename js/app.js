@@ -1201,7 +1201,7 @@ function syncHojeTimer(){
   clearInterval(hjTimer);hjTimer=null;
   if(S.view==='hoje'){refreshHoje();hjTimer=setInterval(function(){if(!document.hidden)refreshHoje()},20000)}
 }
-var STATE_TXT={valid:['Dentro da janela de entrada','ok'],late:['Passou do ponto: não entre','warn'],old:['Sinal velho: ignore','warn'],stopped:['Stop atingido: ignore','bad'],target:['Alvo atingido: ignore','warn'],'sem-preco':['Sem preço agora','warn']};
+var STATE_TXT={valid:['Dentro da janela de entrada','ok'],late:['Passou do ponto: não entre','warn'],old:['Sinal velho: ignore','warn'],running:['Já em andamento: não entre agora','warn'],stopped:['Stop atingido: ignore','bad'],target:['Alvo atingido: ignore','warn'],'sem-preco':['Sem preço agora','warn']};
 function renderHoje(){
   var vEl=$('hjVerdict');
   if(!R){
