@@ -1,6 +1,7 @@
-// Service worker do Radar de Futuros: o app abre offline; os dados de mercado sempre vêm da rede.
-// Troque VERSION a cada publicação para os usuários receberem os arquivos novos.
-const VERSION = 'radar-v2.3.0';
+// Service worker do Radar de Futuros: o app abre offline, mas SEMPRE tenta a rede primeiro,
+// para quem está online nunca ver uma versão velha. Os dados de mercado nunca são guardados.
+// Troque VERSION (e RADAR_VERSION em js/config.js) a cada publicação.
+const VERSION = 'radar-v2.4.0';
 const SHELL = [
   './', 'index.html', 'css/style.css',
   'js/config.js', 'js/engine.js', 'js/metrics.js', 'js/data.js', 'js/bot.js', 'js/hoje.js', 'js/app.js',
@@ -25,16 +26,16 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   // APIs e fontes externas passam direto: nunca guardar preço em cache.
   if (url.origin !== self.location.origin) return;
-  // Stale-while-revalidate: abre rápido do cache e atualiza em segundo plano.
+  // Rede primeiro; o cache só entra quando a rede falha (offline).
   e.respondWith(
-    caches.open(VERSION).then((cache) =>
-      cache.match(req, { ignoreSearch: true }).then((hit) => {
-        const net = fetch(req).then((res) => {
-          if (res && res.ok) cache.put(req, res.clone());
-          return res;
-        }).catch(() => hit || (req.mode === 'navigate' ? cache.match('index.html') : undefined));
-        return hit || net;
-      })
+    fetch(req).then((res) => {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(VERSION).then((c) => c.put(req, copy));
+      }
+      return res;
+    }).catch(() =>
+      caches.match(req, { ignoreSearch: true }).then((hit) => hit || (req.mode === 'navigate' ? caches.match('index.html') : undefined))
     )
   );
 });

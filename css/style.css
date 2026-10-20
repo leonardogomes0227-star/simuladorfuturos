@@ -436,3 +436,4 @@ svg.spark{display:block;width:100%;height:auto;max-height:240px}
 .ticket{grid-template-columns:repeat(2,minmax(0,1fr))}
 .ticket label:first-child{grid-column:1/-1}
 .ticket input{font-family:var(--f-mono);font-size:14px}
+.ver{color:var(--muted);opacity:.8;white-space:nowrap}
