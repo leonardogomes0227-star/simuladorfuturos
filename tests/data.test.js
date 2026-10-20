@@ -74,3 +74,15 @@ test('fetchKlinesRange pagina, não repete velas e para no fim',async()=>{
   await assert.rejects(D.fetchKlinesRange('BTCUSDT','1h',0,10*STEP,()=>Promise.reject(new Error('rede'))),/rede/);
   assert.equal((await D.fetchKlinesRange('BTCUSDT','1h',0,10*STEP,()=>ok([]))).length,0);
 });
+
+test('fetchTicker24h devolve preço e variação em %, com espelho de reserva',async()=>{
+  const urls=[];
+  const f=u=>{urls.push(u);return urls.length===1?Promise.reject(new Error('rede')):ok([{symbol:'BTCUSDT',lastPrice:'81000',openPrice:'80000'},{symbol:'ETHUSDT',lastPrice:'2400',openPrice:'2500'},{symbol:'X',lastPrice:'1',openPrice:'1'},{symbol:'SOLUSDT',lastPrice:'0',openPrice:'1'}])};
+  const t=await D.fetchTicker24h(['BTCUSDT','ETHUSDT','lixo'],f);
+  assert.deepEqual(Object.keys(t),['BTCUSDT','ETHUSDT']);
+  approx(t.BTCUSDT.price,81000);approx(t.BTCUSDT.change,1.25);approx(t.ETHUSDT.change,-4);
+  assert.match(urls[1],/data-api\.binance\.vision/);assert.match(decodeURIComponent(urls[0]),/ticker\/24hr\?type=MINI&symbols=\["BTCUSDT","ETHUSDT"\]/);
+  assert.deepEqual(await D.fetchTicker24h([],()=>{throw new Error('não deve chamar')}),{});
+  await assert.rejects(D.fetchTicker24h(['BTCUSDT'],()=>Promise.reject(new Error('rede'))),/rede/);
+});
+function approx(a,b,e=1e-9){assert.ok(Math.abs(a-b)<=e,a+' != '+b)}

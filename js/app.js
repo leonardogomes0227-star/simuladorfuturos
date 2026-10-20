@@ -31,7 +31,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function fmtDate(t){if(!isFinite(t))return '';var d=new Date(t),p=function(n){return String(n).padStart(2,'0')};return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes())}
 function sgn(n){return n>0?'pos':(n<0?'neg':'')}
 function clamp(v,a,b){return Math.min(b,Math.max(a,v))}
-function say(t){var m=$('msg');m.textContent=t;clearTimeout(S.msgTimer);if(t)S.msgTimer=setTimeout(function(){m.textContent=''},6000)}
+function say(t){var m=$('msg');m.textContent=t;m.classList.toggle('show',!!t);clearTimeout(S.msgTimer);if(t)S.msgTimer=setTimeout(function(){m.classList.remove('show');setTimeout(function(){if(!m.classList.contains('show'))m.textContent=''},250)},6000)}
 function rawPrice(p){return String(+p.toPrecision(8))}
 
 /* ---------- uso local ---------- */
@@ -519,7 +519,7 @@ function sparkSVG(series,opts){
   var mn=Math.min.apply(null,all),mx=Math.max.apply(null,all);if(mx===mn){mx+=1;mn-=1}
   var len=Math.max.apply(null,series.map(function(s){return s.v.length}));
   var X=function(i){return pad+i/(len-1||1)*(w-2*pad)},Y=function(v){return pad+(mx-v)/(mx-mn)*(h-2*pad)};
-  var out='<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" role="img" aria-label="'+esc(opts.label||'Curva')+'">';
+  var out='<svg class="spark" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+esc(opts.label||'Curva')+'">';
   if(opts.base!=null)out+='<line x1="'+pad+'" x2="'+(w-pad)+'" y1="'+Y(opts.base).toFixed(1)+'" y2="'+Y(opts.base).toFixed(1)+'" stroke="var(--line)" stroke-dasharray="4 4" fill="none"/>';
   series.forEach(function(s){
     var d=s.v.map(function(v,i){return (i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)}).join(' ');
@@ -767,7 +767,8 @@ function toggleFull(force){
 function applyTheme(t){
   var root=document.documentElement;
   if(t==='dark'||t==='light')root.setAttribute('data-theme',t);else root.removeAttribute('data-theme');
-  $('themeBtn').textContent='Tema: '+(t==='dark'?'escuro':(t==='light'?'claro':'auto'));
+  $('themeBtn').innerHTML=t==='dark'?ICON.moon:(t==='light'?ICON.sun:ICON.auto);
+  $('themeBtn').title='Tema: '+(t==='dark'?'escuro':(t==='light'?'claro':'automático'))+' (T)';
 }
 function cycleTheme(){
   var cur;try{cur=localStorage.getItem(THEME_KEY)}catch(e){}
@@ -1057,16 +1058,17 @@ function renderBot(){
     st('Operações fechadas',String(sm.n))+st('Em aberto',String(open.length))+
     st('Taxa de acerto',sm.n?sm.winRate.toFixed(0)+'%':'–')+st('Fator de lucro',sm.n?pf:'–')+
     st('Maior queda',sm.n?fmt2(sm.maxDD)+' ('+f1(sm.maxDDPct)+'%)':'–');
-  $('botCurve').innerHTML=sm.n>=2?sparkSVG([{v:sm.curve,color:'var(--accent)',dot:true}],{base:cap,h:110,label:'Curva de saldo do robô'}):'<div class="empty">A curva aparece depois das primeiras operações fechadas.</div>';
+  $('botCurve').innerHTML=sm.n>=2?sparkSVG([{v:sm.curve,color:'var(--accent)',dot:true}],{base:cap,h:150,label:'Curva de saldo do robô'}):'<div class="empty">A curva aparece depois das primeiras operações fechadas.</div>';
 
   if(!open.length)$('botOpen').innerHTML='<div class="empty">'+(B.running?'Nenhuma posição aberta. O robô está esperando um sinal.':'Nenhuma posição aberta.')+'</div>';
   else $('botOpen').innerHTML='<div class="tablewrap"><table><thead><tr><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Stop</th><th class="r">Alvo</th><th class="r">Preço</th><th class="r">Resultado agora</th><th class="l">Por que entrou</th></tr></thead><tbody>'+
     open.map(function(t){var u=Bot.unrealized(B,t);return '<tr><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r neg">'+fmtPrice(t.stop)+'</td><td class="r pos">'+fmtPrice(t.target)+'</td><td class="r">'+fmtPrice(B.prices[t.sym])+'</td><td class="r '+sgn(u)+'">'+(isFinite(u)?fmtSigned(u):'–')+'</td><td class="l why">'+esc(t.reasons.join('; '))+'</td></tr>'}).join('')+'</tbody></table></div>';
 
-  var cl=Bot.closedTrades(B).slice().sort(function(a,b){return b.closedAt-a.closedAt}).slice(0,30),h='';
+  var cl=Bot.closedTrades(B).slice().sort(function(a,b){return b.closedAt-a.closedAt}).slice(0,12),h='';
   if(!cl.length)h='<div class="empty">Quando o robô fechar operações, elas aparecem aqui.</div>';
   else h='<div class="tablewrap"><table><thead><tr><th class="l">Fechada em</th><th class="l">Ativo</th><th class="l">Lado</th><th class="r">Entrada</th><th class="r">Saída</th><th class="r">Resultado</th><th class="r">R</th><th class="l">Saída por</th></tr></thead><tbody>'+
     cl.map(function(t){return '<tr><td class="l">'+fmtDate(t.closedAt)+'</td><td class="l">'+esc(t.sym)+'</td><td class="l '+t.side+'">'+(t.side==='long'?'Compra':'Venda')+'</td><td class="r">'+fmtPrice(t.entry)+'</td><td class="r">'+fmtPrice(t.exit)+'</td><td class="r '+sgn(t.pnl)+'">'+fmtSigned(t.pnl)+'</td><td class="r">'+(t.risk>0?fmtSigned(t.pnl/t.risk):'–')+'</td><td class="l">'+esc(t.reason)+'</td></tr>'}).join('')+'</tbody></table></div>';
+  if(Bot.closedTrades(B).length>12)h+='<p class="note">Mostrando as 12 mais recentes de '+Bot.closedTrades(B).length+'.</p>';
   if(B.log.length)h+='<ul class="list">'+B.log.slice(-5).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
   $('botHist').innerHTML=h;
   if(botMode==='local')renderBotCfg();
@@ -1177,7 +1179,17 @@ function bindBot(){
 
 
 /* ---------- tela Hoje ---------- */
-var Hoje=window.RadarHoje,HOJE_KEY='radar-hoje-v1',hj={capital:0,cur:'BRL',risk:0.5,lev:1,fx:0},hjPrices={},hjAt=0,hjTimer=null,hjBusy=false;
+var Hoje=window.RadarHoje,HOJE_KEY='radar-hoje-v1',hj={capital:0,cur:'BRL',risk:0.5,lev:1,fx:0},hjPrices={},hjChg={},hjAt=0,hjTimer=null,hjBusy=false,hjMini={},hjMiniBusy={};
+var ICON={
+  go:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.2 9.4"/></svg>',
+  wait:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 2"/></svg>',
+  warn:'<svg viewBox="0 0 24 24"><path d="M12 3.5l9.2 16H2.8L12 3.5z"/><path d="M12 10v4.2M12 17.2v.1"/></svg>',
+  stop:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8"/></svg>',
+  shield:'<svg viewBox="0 0 24 24"><path d="M12 3l7.2 3v5.2c0 4.6-3 7.9-7.2 9.8-4.2-1.9-7.2-5.2-7.2-9.8V6L12 3z"/><path d="M9.2 12l2.1 2.1 3.6-4.2"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>',
+  moon:'<svg viewBox="0 0 24 24"><path d="M20 14.2A8 8 0 019.8 4 8 8 0 1020 14.2z"/></svg>',
+  auto:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 000-17z" fill="currentColor"/></svg>'
+};
 function loadHoje(){try{var d=JSON.parse(localStorage.getItem(HOJE_KEY)||'{}');
   if(isFinite(d.capital)&&d.capital>=0)hj.capital=d.capital;if(d.cur==='USDT'||d.cur==='BRL')hj.cur=d.cur;
   if([0.25,0.5,1].indexOf(d.risk)>=0)hj.risk=d.risk;if([1,2,3].indexOf(d.lev)>=0)hj.lev=d.lev;if(d.fx>0)hj.fx=d.fx}catch(e){}}
@@ -1185,16 +1197,20 @@ function saveHoje(){try{localStorage.setItem(HOJE_KEY,JSON.stringify(hj))}catch(
 function hjCapUSDT(){if(!(hj.capital>0))return 0;if(hj.cur==='USDT')return hj.capital;return hj.fx>0?hj.capital/hj.fx:0}
 function money(usdt){return hj.cur==='BRL'&&hj.fx>0?'R$ '+fmt2(usdt*hj.fx):fmt2(usdt)+' USDT'}
 function ago(ms){return fmtDur(Math.max(0,ms))}
+function hjSymbols(){
+  var s=R?R.st.cfg.syms.slice():[];
+  if(R)Bot.openTrades(R.st).forEach(function(t){if(s.indexOf(t.sym)<0)s.push(t.sym)});
+  return s;
+}
 function refreshHoje(){
   if(hjBusy)return;
-  var syms=R?Bot.openTrades(R.st).map(function(t){return t.sym}):[];
+  var syms=hjSymbols();
   if(hj.cur==='BRL')syms.push('USDTBRL');
-  syms=syms.filter(function(x,i,a){return a.indexOf(x)===i});
   if(!syms.length){renderHoje();return}
   hjBusy=true;
-  D.fetchPrices(syms).then(function(p){
-    Object.keys(p).forEach(function(k){hjPrices[k]=p[k]});hjAt=Date.now();
-    if(p.USDTBRL>0){hj.fx=p.USDTBRL;saveHoje()}
+  D.fetchTicker24h(syms).then(function(p){
+    Object.keys(p).forEach(function(k){hjPrices[k]=p[k].price;hjChg[k]=p[k].change});hjAt=Date.now();
+    if(p.USDTBRL&&p.USDTBRL.price>0){hj.fx=p.USDTBRL.price;saveHoje()}
   }).catch(function(){}).then(function(){hjBusy=false;if(S.view==='hoje')renderHoje()});
 }
 function syncHojeTimer(){
@@ -1202,43 +1218,103 @@ function syncHojeTimer(){
   if(S.view==='hoje'){refreshHoje();hjTimer=setInterval(function(){if(!document.hidden)refreshHoje()},20000)}
 }
 var STATE_TXT={valid:['Dentro da janela de entrada','ok'],late:['Passou do ponto: não entre','warn'],old:['Sinal velho: ignore','warn'],running:['Já em andamento: não entre agora','warn'],stopped:['Stop atingido: ignore','bad'],target:['Alvo atingido: ignore','warn'],'sem-preco':['Sem preço agora','warn']};
-function renderHoje(){
-  var vEl=$('hjVerdict');
-  if(!R){
-    var c=rcfg(),msg=remoteErr==='404'?'O servidor ainda não gravou nada. Abra a aba Robô para ver como iniciar.':remoteErr==='net'?'Não consegui ler o estado do robô agora. Tento de novo em 1 minuto.':remoteErr==='config'?'Falta indicar o repositório em js/config.js.':'Carregando…';
-    vEl.className='card hj-verdict tone-warn';vEl.innerHTML='<div class="hjword warn">AGUARDE</div><p class="hjreason">'+esc(msg)+'</p>';
-    $('hjSignals').innerHTML='';renderHojeMy(null);renderHojeRules();$('hjStats').innerHTML='';$('hjGate').innerHTML='';return;
-  }
-  var now=Date.now(),u={capital:hjCapUSDT(),riskPct:hj.risk,maxLev:hj.lev},a=Hoje.advise(R.st,R.meta,hjPrices,u,now);
-  var cfg={oportunidade:['HÁ OPORTUNIDADE','go','tone-go'],esperar:['ESPERAR','wait',''],simular:['SÓ SIMULAR','warn','tone-warn'],parar:['NÃO OPERAR HOJE','stop','tone-stop'],desatualizado:['ESPERAR','warn','tone-warn']}[a.code];
-  var h='<div class="hjword '+cfg[1]+'">'+cfg[0]+'</div><p class="hjreason">'+esc(a.reason)+'</p>';
-  if(!a.ready){
-    h+='<div><div class="note">Trava de segurança: '+a.rd.passed+' de '+a.rd.checks.length+' critérios cumpridos</div><div class="gatebar" role="img" aria-label="Progresso da trava de segurança"><span style="width:'+(a.rd.passed/a.rd.checks.length*100).toFixed(0)+'%"></span></div></div>'+
-      '<ul class="list">'+a.rd.checks.filter(function(c){return !c.ok}).slice(0,3).map(function(c){return '<li>Falta: '+esc(c.label)+' ('+esc(c.detail)+')</li>'}).join('')+'</ul>';
-  }else h+='<p class="note">O robô cumpriu os critérios no simulado. Mesmo assim: resultado passado não garante o futuro, comece pequeno e mantenha a alavancagem baixa.</p>';
-  var lastRun=R.meta.lastRun||0;
-  h+='<p class="qfoot">Robô conferiu o mercado '+(lastRun?'há '+ago(now-lastRun):'ainda não')+(hjAt?' · preços atualizados há '+Math.max(0,Math.round((now-hjAt)/1000))+' s':'')+'. Tudo aqui é simulação: nenhuma ordem é enviada.</p>';
-  vEl.className='card hj-verdict '+cfg[2];vEl.innerHTML=h;
 
-  var sg='<h2>Sinais do robô</h2>';
-  if(!a.signals.length)sg+='<div class="empty">Nenhum sinal aberto agora. Quando o robô entrar numa operação, ela aparece aqui com tudo pronto.</div>';
+// gráfico pequeno do ativo com entrada, stop e alvo (velas do mesmo intervalo do robô)
+function loadMini(sym,tf){
+  var k=sym+'|'+tf,c=hjMini[k];
+  if((c&&Date.now()-c.at<300000)||hjMiniBusy[k])return;
+  hjMiniBusy[k]=true;
+  D.fetchKlines(sym,tf,120).then(function(cs){hjMini[k]={at:Date.now(),cs:cs}}).catch(function(){hjMini[k]={at:Date.now(),cs:null}})
+    .then(function(){hjMiniBusy[k]=false;if(S.view==='hoje')renderHojeSignals()});
+}
+function miniChart(cs,t,price){
+  var W=640,H=150,pl=6,pr=72,pt=10,pb=10,closes=cs.map(function(c){return c.c});
+  var lo=Math.min.apply(null,closes.concat([t.stop,t.target,t.entry])),hi=Math.max.apply(null,closes.concat([t.stop,t.target,t.entry])),pad=(hi-lo)*0.07||1;lo-=pad;hi+=pad;
+  var X=function(i){return pl+i/(cs.length-1)*(W-pl-pr)},Y=function(v){return pt+(hi-v)/(hi-lo)*(H-pt-pb)};
+  var line=closes.map(function(v,i){return (i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)}).join(' ');
+  var area=line+' L'+X(closes.length-1).toFixed(1)+' '+(H-pb)+' L'+X(0).toFixed(1)+' '+(H-pb)+' Z';
+  // rótulos dos níveis afastados entre si, para Entrada, Stop e Alvo nunca se sobreporem
+  var labs=[[t.target,'Alvo','var(--up)'],[t.entry,'Entrada','var(--fg)'],[t.stop,'Stop','var(--down)']].map(function(l){return {v:l[0],label:l[1],color:l[2],y:Y(l[0])}}).sort(function(a,b){return a.y-b.y});
+  var ty=labs.map(function(l){return l.y});
+  for(var q=1;q<ty.length;q++)if(ty[q]-ty[q-1]<12)ty[q]=ty[q-1]+12;
+  function lvl(l,i){var y=l.y.toFixed(1);return '<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y+'" y2="'+y+'" stroke="'+l.color+'" stroke-width="1.3" stroke-dasharray="5 4" opacity=".9"/><text x="'+(W-pr+6)+'" y="'+(ty[i]+3.5).toFixed(1)+'" style="fill:'+l.color+'">'+l.label+'</text>'}
+  var last=price>0?price:closes[closes.length-1];
+  return '<svg class="mini" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Preço recente de '+esc(t.sym)+' com entrada, stop e alvo">'+
+    '<defs><linearGradient id="mg'+esc(t.sym)+'" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".25"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>'+
+    '<path d="'+area+'" fill="url(#mg'+esc(t.sym)+')"/><path d="'+line+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>'+
+    labs.map(lvl).join('')+
+    '<circle cx="'+X(closes.length-1).toFixed(1)+'" cy="'+Y(last).toFixed(1)+'" r="4.5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/></svg>';
+}
+// escada: do stop ao alvo, com a janela de entrada e o preço de agora
+function ladder(t,price,st){
+  var vals=[t.stop,t.target,t.entry,st.lo,st.hi].concat(price>0?[price]:[]),mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),pad=(mx-mn)*0.14||1;mn-=pad;mx+=pad;
+  var P=function(v){return ((v-mn)/(mx-mn)*100)},long=t.side==='long';
+  var a=Math.min(P(t.stop),P(t.entry)),b=Math.max(P(t.stop),P(t.entry)),c=Math.min(P(t.entry),P(t.target)),d=Math.max(P(t.entry),P(t.target));
+  var rev=!long?' rev':'';
+  var mark=function(cls,label,v){return '<div class="lad-mark '+cls+'" style="left:'+P(v).toFixed(1)+'%"><span>'+label+'</span><b>'+fmtPrice(v)+'</b></div>'};
+  return '<div class="ladder" role="img" aria-label="Escada de preços: stop, entrada, alvo e preço atual">'+
+    '<div class="lad-track"></div>'+
+    '<div class="lad-zone red'+rev+'" style="left:'+a.toFixed(1)+'%;width:'+(b-a).toFixed(1)+'%"></div>'+
+    '<div class="lad-zone green'+rev+'" style="left:'+c.toFixed(1)+'%;width:'+(d-c).toFixed(1)+'%"></div>'+
+    '<div class="lad-win" style="left:'+P(Math.min(st.lo,st.hi)).toFixed(1)+'%;width:'+(P(Math.max(st.lo,st.hi))-P(Math.min(st.lo,st.hi))).toFixed(1)+'%" title="Janela de entrada"></div>'+
+    mark('stop','Stop',t.stop)+mark('entry','Entrada',t.entry)+mark('target','Alvo',t.target)+
+    (price>0?'<div class="lad-now" style="left:'+Math.min(98,Math.max(2,P(price))).toFixed(1)+'%"><i></i><b>Agora '+fmtPrice(price)+'</b></div>':'')+'</div>';
+}
+function renderHojeTicker(){
+  var syms=hjSymbols();if(!syms.length&&R)syms=['BTCUSDT'];
+  if(!syms.length){$('hjTicker').innerHTML='<div class="tk-chip skel"></div><div class="tk-chip skel"></div><div class="tk-chip skel"></div>';return}
+  $('hjTicker').innerHTML=syms.map(function(s){
+    var p=hjPrices[s]||(R&&R.st.prices[s]),ch=hjChg[s];
+    return '<div class="tk-chip"><span class="tk-sym">'+esc(s.replace(/USDT$/,''))+'</span><span class="tk-price">'+(p?fmtPrice(p):'–')+'</span>'+(isFinite(ch)?'<span class="tk-chg '+sgn(ch)+'">'+(ch>=0?'+':'')+ch.toFixed(2).replace('.',',')+'%</span>':'')+'</div>';
+  }).join('');
+}
+var hjAdvice=null;
+function renderHojeSignals(){
+  var a=hjAdvice,now=Date.now();if(!a||!R)return;
+  var tf=R.st.cfg.tf,sg='<h2>Sinais do robô</h2>';
+  if(!a.signals.length)sg+='<div class="empty">Nenhum sinal aberto agora. Quando o robô entrar numa operação, ela aparece aqui com tudo pronto: onde entrar, onde parar e quanto comprar.</div>';
   a.signals.forEach(function(x){
-    var t=x.trade,long=t.side==='long',st=STATE_TXT[x.status.state]||STATE_TXT.valid,ok=x.status.state==='valid',sz=x.size,dist=Math.abs(t.entry-t.stop);
-    sg+='<div class="sigcard '+(ok?t.side:'ignore')+'"><div class="sigtop"><span class="sigtitle '+(long?'long':'short')+'">'+(long?'COMPRAR ':'VENDER ')+esc(t.sym)+'</span><span class="badge '+st[1]+'">'+st[0]+'</span><span class="note">sinal de há '+ago(now-t.openedAt)+'</span></div>'+
-      '<dl class="kv"><dt>Preço agora</dt><dd class="num">'+(x.price?fmtPrice(x.price):'–')+'</dd>'+
-      '<dt>Janela de entrada</dt><dd class="num">'+fmtPrice(Math.min(x.status.lo,x.status.hi))+' e '+fmtPrice(Math.max(x.status.lo,x.status.hi))+'</dd>'+
-      '<dt>Stop (limite da perda)</dt><dd class="num neg">'+fmtPrice(t.stop)+' ('+f1(dist/t.entry*100)+'% do preço)</dd>'+
-      '<dt>Alvo (lucro)</dt><dd class="num pos">'+fmtPrice(t.target)+'</dd>'+
-      '<dt>Retorno para risco agora</dt><dd class="num">'+(isFinite(x.status.rr)?f1(x.status.rr)+' : 1':'–')+'</dd></dl>';
+    var t=x.trade,long=t.side==='long',st=STATE_TXT[x.status.state]||STATE_TXT.valid,ok=x.status.state==='valid',sz=x.size,dist=Math.abs(t.entry-t.stop),d0=t.dist0>0?t.dist0:dist;
+    if(ok)loadMini(t.sym,tf);
+    var mini=hjMini[t.sym+'|'+tf],chart=ok&&mini&&mini.cs?miniChart(mini.cs,t,x.price):'';
+    sg+='<div class="sigcard '+(ok?t.side:'ignore')+'"><div class="sigtop"><span class="chip-act">'+(long?'COMPRAR':'VENDER')+'</span><span class="sigtitle">'+esc(t.sym.replace(/USDT$/,''))+'<span class="note"> /USDT</span></span><span class="badge '+st[1]+'">'+st[0]+'</span><span class="note sigage">sinal de há '+ago(now-t.openedAt)+'</span></div>'+
+      ladder(t,x.price,x.status)+
+      '<div class="numgrid">'+
+      '<div class="nbox"><span>Preço agora</span><b>'+(x.price?fmtPrice(x.price):'–')+'</b></div>'+
+      '<div class="nbox"><span>Stop (limite da perda)</span><b class="neg">'+fmtPrice(t.stop)+'</b><small>'+f1(d0/t.entry*100)+'% do preço</small></div>'+
+      '<div class="nbox"><span>Alvo (lucro)</span><b class="pos">'+fmtPrice(t.target)+'</b><small>+'+f1(Math.abs(t.target-t.entry)/t.entry*100)+'% do preço</small></div>'+
+      '<div class="nbox"><span>Retorno para risco</span><b>'+(isFinite(x.status.rr)?f1(x.status.rr)+' : 1':'–')+'</b><small>com o preço de agora</small></div></div>'+
+      chart;
     if(ok){
-      if(sz)sg+='<div class="howmuch">Com <b>'+money(hjCapUSDT())+'</b>, arriscando '+f1(hj.risk)+'%: '+(long?'compre ':'venda ')+'<b>'+fmtQty(sz.qty)+' '+esc(t.sym.replace(/USDT$/,''))+'</b> (≈ '+money(sz.notional)+'), alavancagem '+f1(sz.lev)+'x. Se bater o stop você perde ≈ <b>'+money(sz.riskUSD)+'</b>; se bater o alvo ganha ≈ <b>'+money(sz.rewardUSD)+'</b>.'+(sz.capped?' <span class="neg">Tamanho limitado pela alavancagem máxima: o risco real ficou em '+f1(sz.riskPct)+'%.</span>':'')+'</div>';
+      if(sz)sg+='<div class="howmuch">Com <b>'+money(hjCapUSDT())+'</b>, arriscando '+f1(hj.risk)+'%: '+(long?'compre ':'venda ')+'<b>'+fmtQty(sz.qty)+' '+esc(t.sym.replace(/USDT$/,''))+'</b> (≈ '+money(sz.notional)+'), alavancagem '+f1(sz.lev)+'x. Se bater o stop você perde ≈ <b class="neg">'+money(sz.riskUSD)+'</b>; se bater o alvo ganha ≈ <b class="pos">'+money(sz.rewardUSD)+'</b>.'+(sz.capped?' <span class="neg">Tamanho limitado pela alavancagem máxima: o risco real ficou em '+f1(sz.riskPct)+'%.</span>':'')+'</div>';
       else sg+='<div class="howmuch note">Informe quanto vai usar em "Meu dinheiro" para ver o tamanho da operação.</div>';
       sg+='<div class="note">Coloque o stop na corretora junto com a entrada.'+(long?'':' Venda exige mercado de futuros; use margem isolada.')+'</div>';
     }
     sg+='<details><summary class="note">Por que o robô entrou</summary><ul class="list">'+t.reasons.map(function(r){return '<li>'+esc(r)+'</li>'}).join('')+'</ul></details></div>';
   });
   $('hjSignals').innerHTML=sg;
-  renderHojeMy(a);renderHojeRules();
+}
+function renderHoje(){
+  renderHojeTicker();
+  var vEl=$('hjVerdict');
+  if(!R){
+    var msg=remoteErr==='404'?'O servidor ainda não gravou nada. Abra a aba Robô para ver como iniciar.':remoteErr==='net'?'Não consegui ler o estado do robô agora. Tento de novo em 1 minuto.':remoteErr==='config'?'Falta indicar o repositório em js/config.js.':'';
+    vEl.className='card hj-verdict'+(msg?' tone-warn':'');
+    vEl.innerHTML=msg?'<div class="hj-icon">'+ICON.warn+'</div><div class="hj-body"><div class="hjword warn">AGUARDE</div><p class="hjreason">'+esc(msg)+'</p></div>'
+      :'<div class="hj-icon skel"></div><div class="hj-body"><div class="skel" style="height:34px;width:min(320px,70%)"></div><div class="skel" style="height:18px;width:min(520px,95%)"></div></div>';
+    $('hjSignals').innerHTML='';renderHojeMy(null);renderHojeRules();$('hjStats').innerHTML='';$('hjGate').innerHTML='';return;
+  }
+  var now=Date.now(),u={capital:hjCapUSDT(),riskPct:hj.risk,maxLev:hj.lev},a=Hoje.advise(R.st,R.meta,hjPrices,u,now);hjAdvice=a;
+  var cfg={oportunidade:['HÁ OPORTUNIDADE','go','tone-go','go'],esperar:['ESPERAR','wait','','wait'],simular:['SÓ SIMULAR','warn','tone-warn','shield'],parar:['NÃO OPERAR HOJE','stop','tone-stop','stop'],desatualizado:['ESPERAR','warn','tone-warn','warn']}[a.code];
+  var h='<div class="hj-icon">'+ICON[cfg[3]]+'</div><div class="hj-body"><div class="hjword '+cfg[1]+'">'+cfg[0]+'</div><p class="hjreason">'+esc(a.reason)+'</p>';
+  if(!a.ready){
+    h+='<div class="gate"><div class="gate-top"><span>Trava de segurança</span><span>'+a.rd.passed+' de '+a.rd.checks.length+' critérios</span></div><div class="gatebar" role="img" aria-label="Progresso da trava de segurança"><span style="width:'+(a.rd.passed/a.rd.checks.length*100).toFixed(0)+'%"></span></div></div>'+
+      '<ul class="list">'+a.rd.checks.filter(function(c){return !c.ok}).slice(0,3).map(function(c){return '<li>Falta: '+esc(c.label)+' ('+esc(c.detail)+')</li>'}).join('')+'</ul>';
+  }else h+='<p class="note">O robô cumpriu os critérios no simulado. Mesmo assim: resultado passado não garante o futuro, comece pequeno e mantenha a alavancagem baixa.</p>';
+  var lastRun=R.meta.lastRun||0;
+  h+='<div class="hj-chips"><span class="hj-chip">Robô conferiu '+(lastRun?'há '+ago(now-lastRun):'ainda não')+'</span>'+(hjAt?'<span class="hj-chip">Preços há '+Math.max(0,Math.round((now-hjAt)/1000))+' s</span>':'')+'<span class="hj-chip">Velas de '+esc(R.st.cfg.tf)+'</span><span class="hj-chip">Nenhuma ordem é enviada</span></div></div>';
+  vEl.className='card hj-verdict '+cfg[2];vEl.innerHTML=h;
+  renderHojeSignals();renderHojeMy(a);renderHojeRules();
 
   var sm=M.summarize(R.st.trades,R.st.cfg.capital),unreal=0;
   Bot.openTrades(R.st).forEach(function(t){var p=hjPrices[t.sym]||R.st.prices[t.sym];if(p)unreal+=(p-t.entry)*t.qty*(t.side==='long'?1:-1)});
@@ -1251,11 +1327,13 @@ function renderHojeMy(a){
   if(hj.cur==='BRL'&&!(hj.fx>0)&&hj.capital>0)h='<div class="warnbox">Ainda não consegui a cotação do dólar. Escolha USDT na moeda ou espere alguns segundos.</div>';
   else if(cap>0){
     var L=Hoje.limits(cap,hj.risk*3,hj.risk*6);
-    h='<dl class="kv"><dt>Perda máxima hoje (3 stops)</dt><dd class="num neg">'+money(L.daily)+'</dd><dt>Perda máxima na semana (6 stops)</dt><dd class="num neg">'+money(L.weekly)+'</dd><dt>Risco por operação</dt><dd class="num">'+money(cap*hj.risk/100)+'</dd></dl><p class="note">Chegou no limite do dia? Feche o app. O limite existe justamente para o dia ruim não virar um mês ruim.</p>';
+    h='<dl class="kv"><dt>Perda máxima hoje (3 stops)</dt><dd class="num neg">'+money(L.daily)+'</dd><dt>Perda máxima na semana (6 stops)</dt><dd class="num neg">'+money(L.weekly)+'</dd><dt>Risco por operação</dt><dd class="num">'+money(cap*hj.risk/100)+'</dd></dl><p class="note">Chegou no limite do dia? Feche o app. O limite existe para o dia ruim não virar um mês ruim.</p>';
   }else h='<p class="note">Digite quanto pretende usar para ver o tamanho das operações e seus limites de perda.</p>';
   $('hjLimits').innerHTML=h;
   if(document.activeElement!==$('hjCapital'))$('hjCapital').value=hj.capital>0?hj.capital:'';
-  $('hjCur').value=hj.cur;$('hjRisk').value=String(hj.risk);$('hjLev').value=String(hj.lev);
+  [['hjCurSeg','cur'],['hjRiskSeg','risk'],['hjLevSeg','lev']].forEach(function(a2){
+    Array.prototype.forEach.call($(a2[0]).querySelectorAll('button'),function(b){b.classList.toggle('on',String(hj[a2[1]])===b.getAttribute('data-v'))});
+  });
 }
 function renderHojeRules(){
   $('hjRules').innerHTML='<h2>Regras para crescer sem se quebrar</h2><ol class="rules">'+
@@ -1267,9 +1345,14 @@ function renderHojeRules(){
 }
 function bindHoje(){
   $('hjCapital').addEventListener('change',function(e){var v=parseFloat(String(e.target.value).replace(',','.'));hj.capital=isFinite(v)&&v>0?v:0;saveHoje();refreshHoje()});
-  $('hjCur').addEventListener('change',function(e){hj.cur=e.target.value;saveHoje();refreshHoje()});
-  $('hjRisk').addEventListener('change',function(e){hj.risk=parseFloat(e.target.value);saveHoje();renderHoje()});
-  $('hjLev').addEventListener('change',function(e){hj.lev=parseInt(e.target.value,10);saveHoje();renderHoje()});
+  ['hjCurSeg','hjRiskSeg','hjLevSeg'].forEach(function(id){
+    $(id).addEventListener('click',function(e){
+      var b=e.target.closest('button[data-v]');if(!b)return;
+      var key=$(id).getAttribute('data-key'),v=b.getAttribute('data-v');
+      hj[key]=key==='cur'?v:parseFloat(v);saveHoje();
+      if(key==='cur')refreshHoje();else renderHoje();
+    });
+  });
 }
 
 /* ---------- robô no servidor (somente leitura) ---------- */
