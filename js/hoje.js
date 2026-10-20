@@ -41,7 +41,7 @@ function entryStatus(t,price,now,tfMs){
 
 // Resposta do dia. prices: {SYM: preço ao vivo}. u: {capital, riskPct, maxLev} (capital em USDT, pode ser 0).
 function advise(st,meta,prices,u,now){
-  var tfMs=D.TFS[st.cfg.tf],rd=Bot.readiness(st,now),lastRun=meta&&meta.lastRun||0,staleMs=Math.max(3*H,3*tfMs);
+  var tfMs=D.TFS[st.cfg.tf],pesq=meta&&meta.pesquisa||null,rd=Bot.readiness(st,now,pesq),lastRun=meta&&meta.lastRun||0,staleMs=Math.max(3*H,3*tfMs);
   var signals=Bot.openTrades(st).map(function(t){
     var p=prices&&prices[t.sym]||st.prices[t.sym],es=entryStatus(t,p,now,tfMs);
     return {trade:t,price:p,status:es,size:u&&u.capital>0?sizeForUser(u,t):null};
@@ -49,7 +49,8 @@ function advise(st,meta,prices,u,now){
   var actionable=signals.filter(function(x){return x.status.state==='valid'});
   var dailyLoss=-Bot.dayPnl(st,now),dailyLimit=st.cfg.dailyPct/100*st.cfg.capital,hit=dailyLoss>=dailyLimit;
   var res={ready:rd.ready,rd:rd,signals:signals,actionable:actionable,stale:lastRun>0&&now-lastRun>staleMs,staleMs:now-lastRun,dailyHit:hit};
-  if(!rd.ready){res.code='simular';res.reason='O robô ainda não provou a estratégia ('+rd.passed+' de '+rd.checks.length+' critérios). Acompanhe, mas não use dinheiro real.'}
+  res.pesquisa=pesq;
+  if(!rd.ready){res.code='simular';res.reason=(pesq&&!pesq.recommended&&!pesq.mismatch?'A pesquisa com anos de dados reais não encontrou vantagem confiável nesta estratégia. ':'')+'O robô ainda não provou a estratégia ('+rd.passed+' de '+rd.checks.length+' critérios). Acompanhe, mas não use dinheiro real.'}
   else if(res.stale){res.code='desatualizado';res.reason='O servidor não confere o mercado há muito tempo. Espere ele voltar antes de operar.'}
   else if(hit){res.code='parar';res.reason='O robô atingiu o limite de perda do dia. Quando isso acontece, o dia acaba.'}
   else if(actionable.length){res.code='oportunidade';res.reason=actionable.length===1?'Há um sinal dentro da janela de entrada.':'Há '+actionable.length+' sinais dentro da janela de entrada.'}

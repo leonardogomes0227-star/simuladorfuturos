@@ -140,7 +140,7 @@ function aggregate(results){
 }
 
 // Placar de prontidão: o que o histórico do robô precisa mostrar antes de alguém pensar em dinheiro real.
-function readiness(st,now){
+function readiness(st,now,pesq){
   var sm=M.summarize(st.trades,st.cfg.capital),days=st.startedAt?(now-st.startedAt)/DAY:0;
   var pf=sm.pf===Infinity?'sem perdas':sm.pf.toFixed(2).replace('.',','),c2=function(n){return n.toFixed(2).replace('.',',')};
   var checks=[
@@ -151,6 +151,12 @@ function readiness(st,now){
     {ok:sm.n>0&&sm.maxDDPct<=20,label:'Maior queda de até 20%',detail:sm.n?sm.maxDDPct.toFixed(1).replace('.',',')+'%':'sem operações'},
     {ok:st.gaps===0,label:'Sem buracos de dados',detail:st.gaps?st.gaps+' ocorrência(s)':'nenhum'}
   ];
+  if(pesq!==undefined){
+    // pesq: resultado da pesquisa walk-forward do mesmo intervalo (null = nunca rodou)
+    var okP=!!(pesq&&pesq.recommended&&!pesq.mismatch);
+    var det=!pesq?'ainda sem pesquisa':(pesq.mismatch?'pesquisa é de outro intervalo ('+pesq.tf+')':(okP?'aprovada':'reprovada ('+(pesq.oosAvgR>=0?'+':'')+pesq.oosAvgR.toFixed(3).replace('.',',')+'R por operação)'));
+    checks.unshift({ok:okP,label:'Validação em anos de histórico real (walk-forward)',detail:det});
+  }
   var passed=checks.filter(function(c){return c.ok}).length;
   return {checks:checks,passed:passed,ready:passed===checks.length};
 }

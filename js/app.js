@@ -1088,7 +1088,7 @@ function renderBotCfg(){
   $('bCloseAll').disabled=!Bot.openTrades(B).length;
 }
 function renderBotReady(){
-  var rd=Bot.readiness(B,Date.now()),h='<h2>Pronto para operar de verdade?</h2><ul class="checklist">'+
+  var rd=Bot.readiness(B,Date.now(),botMode==='server'?(R&&R.meta.pesquisa||null):undefined),h='<h2>Pronto para operar de verdade?</h2><ul class="checklist">'+
     rd.checks.map(function(c){return '<li><span class="'+(c.ok?'ok':'no')+'">'+(c.ok?'✓':'○')+'</span><span>'+esc(c.label)+'</span><span class="d">'+esc(c.detail)+'</span></li>'}).join('')+'</ul>';
   h+=rd.ready
     ?'<p class="note">O robô cumpriu todos os critérios no simulado. É um bom sinal, mas não é garantia: no mercado real a derrapagem é pior, as ordens podem falhar e o emocional pesa. Se for operar de verdade, comece pequeno, com a menor alavancagem, e só com dinheiro que você aceita perder.</p>'

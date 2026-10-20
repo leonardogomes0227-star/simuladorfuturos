@@ -50,13 +50,14 @@ test('advise: só simular enquanto o robô não provou a estratégia',()=>{
 });
 test('advise: oportunidade, esperar, parar, desatualizado',()=>{
   const tr=closedWins(40).map((t,i)=>({...t,pnl:i%4?3:-1}));
-  const mk=(open,over,meta)=>H.advise(state(tr.concat(open),over),meta||{lastRun:NOW-HR/4},{BTCUSDT:100},{capital:1000,riskPct:0.5,maxLev:2},NOW);
+  const OK={tf:'1h',recommended:true,oosAvgR:0.1};
+  const mk=(open,over,meta)=>H.advise(state(tr.concat(open),over),meta||{lastRun:NOW-HR/4,pesquisa:OK},{BTCUSDT:100},{capital:1000,riskPct:0.5,maxLev:2},NOW);
   let a=mk([trade()]);assert.equal(a.ready,true);assert.equal(a.code,'oportunidade');
   assert.equal(mk([trade({openedAt:NOW-5*HR})]).code,'esperar');           // sinal velho
   assert.equal(mk([]).code,'esperar');
-  assert.equal(mk([trade()],{},{lastRun:NOW-10*HR}).code,'desatualizado');
+  assert.equal(mk([trade()],{},{lastRun:NOW-10*HR,pesquisa:OK}).code,'desatualizado');
   const losing=tr.concat([{...tr[0],id:'big',pnl:-50,closedAt:NOW-HR}]);
-  a=H.advise(state(losing.concat([trade()])),{lastRun:NOW-HR/4},{BTCUSDT:100},null,NOW);
+  a=H.advise(state(losing.concat([trade()])),{lastRun:NOW-HR/4,pesquisa:OK},{BTCUSDT:100},null,NOW);
   assert.equal(a.code,'parar');assert.equal(a.dailyHit,true);
 });
 test('limits e alertText',()=>{
@@ -67,4 +68,17 @@ test('limits e alertText',()=>{
   assert.match(H.alertText({type:'open',trade:trade({side:'short',stop:102,target:96})},true,f),/VENDER.*comece pequeno[\s\S]*futuros/);
   assert.match(H.alertText({type:'close',trade:{...trade(),reason:'Stop',pnl:-12.5}},false,f),/Stop em BTCUSDT: -12.50/);
   assert.match(H.alertText({type:'close',trade:{...trade(),reason:'Alvo',pnl:20}},false,f),/Alvo em BTCUSDT: \+20.00/);
+});
+
+test('advise: sem pesquisa aprovada nunca libera, mesmo com bom histórico no robô',()=>{
+  const tr=closedWins(40).map((t,i)=>({...t,pnl:i%4?3:-1})),st=()=>state(tr.concat([trade()]));
+  const run=(pesquisa)=>H.advise(st(),{lastRun:NOW-HR/4,pesquisa},{BTCUSDT:100},{capital:1000,riskPct:0.5,maxLev:1},NOW);
+  assert.equal(run(undefined).code,'simular');
+  assert.equal(run(null).code,'simular');
+  const rej=run({tf:'1h',recommended:false,oosAvgR:-0.045,passed:2,total:5});
+  assert.equal(rej.code,'simular');assert.match(rej.reason,/pesquisa com anos de dados reais não encontrou vantagem/);
+  assert.equal(rej.rd.checks[0].ok,false);assert.match(rej.rd.checks[0].detail,/reprovada \(-0,045R/);
+  assert.equal(run({tf:'4h',mismatch:true}).code,'simular');
+  assert.equal(run({tf:'1h',recommended:true,oosAvgR:0.1}).code,'oportunidade');
+  assert.equal(rej.signals.length,1,'ainda mostra o sinal para acompanhar em simulação');
 });

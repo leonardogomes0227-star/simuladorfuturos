@@ -186,3 +186,15 @@ test('zerarHistorico: texto novo começa conta limpa, o mesmo texto não repete'
   assert.equal(B.sanitize(JSON.parse(JSON.stringify(st))).resetToken,'v2');
   assert.equal(B.parseConfig({}).resetToken,'');
 });
+
+test('readiness: a validação histórica é a primeira checagem e é obrigatória quando informada',()=>{
+  const st=B.defaults(),now=Date.now();
+  st.startedAt=now-20*86400000;
+  for(let i=0;i<40;i++)st.trades.push({id:'x'+i,sym:'BTCUSDT',side:'long',entry:100,stop:99,target:102,qty:1,lev:1,risk:1,openedAt:i,openT:i,status:'closed',exit:102,pnl:i%3?2:-1,closedAt:i+1,reason:'x',score:4,reasons:[]});
+  assert.equal(B.readiness(st,now).ready,true,'sem pesquisa informada, vale só o histórico do robô');
+  assert.equal(B.readiness(st,now).checks.length,6);
+  const sem=B.readiness(st,now,null);assert.equal(sem.checks.length,7);assert.equal(sem.checks[0].ok,false);assert.match(sem.checks[0].detail,/sem pesquisa/);assert.equal(sem.ready,false);
+  const rej=B.readiness(st,now,{tf:'1h',recommended:false,oosAvgR:-0.045});assert.equal(rej.ready,false);assert.match(rej.checks[0].detail,/reprovada \(-0,045R/);
+  const ok=B.readiness(st,now,{tf:'1h',recommended:true,oosAvgR:0.1});assert.equal(ok.ready,true);assert.equal(ok.passed,7);assert.match(ok.checks[0].detail,/aprovada/);
+  assert.equal(B.readiness(st,now,{tf:'4h',mismatch:true}).ready,false);
+});

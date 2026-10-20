@@ -126,3 +126,19 @@ test('Telegram: avisa abertura e fechamento, esconde o token e não derruba a ro
   for(N=340;N<=700;N+=40)await run({...t3,fetchImpl:(u,o)=>{if(/telegram/.test(u))calls++;return fetchOk(u)},now:nowFor(N)});
   assert.equal(calls,0);
 });
+
+test('pesquisa: lê o resultado gravado ao lado do estado, só do mesmo intervalo',async()=>{
+  N=300;const t=tmp(CONF);
+  let r=await run({...t,fetchImpl:fetchOk,now:nowFor(300)});
+  assert.equal(r.meta.pesquisa,null);
+  const dir=path.dirname(t.statePath);
+  const out={generatedAt:123,tf:'15m',coins:['A','B'],verdict:{recommended:false,passed:2,checks:[1,2,3,4,5]},oos:{n:400,avgR:-0.04,pf:0.93}};
+  fs.writeFileSync(path.join(dir,'pesquisa-15m.json'),JSON.stringify(out));
+  r=await run({...t,fetchImpl:fetchOk,now:nowFor(310)});
+  assert.deepEqual(r.meta.pesquisa,{tf:'15m',generatedAt:123,recommended:false,passed:2,total:5,oosN:400,oosAvgR:-0.04,oosPf:0.93,coins:2});
+  fs.writeFileSync(path.join(dir,'pesquisa-15m.json'),JSON.stringify({...out,tf:'1h',oos:{...out.oos,pf:Infinity}}));
+  r=await run({...t,fetchImpl:fetchOk,now:nowFor(320)});
+  assert.deepEqual(r.meta.pesquisa,{mismatch:true,tf:'1h'});
+  fs.writeFileSync(path.join(dir,'pesquisa-15m.json'),'lixo');
+  r=await run({...t,fetchImpl:fetchOk,now:nowFor(330)});assert.equal(r.meta.pesquisa,null);
+});
