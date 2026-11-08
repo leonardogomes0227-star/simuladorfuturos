@@ -1,0 +1,27 @@
+{
+  "ligado": true,
+  "intervalo": "15m",
+  "moedas": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  "capitalPorIA": 100,
+  "regras": {
+    "riscoMaxPct": 2,
+    "alavancagemMax": 5,
+    "maxPosicoes": 2,
+    "perdaDiariaMaxPct": 10,
+    "taxaPorLadoPct": 0.05,
+    "derrapagemPorLadoPct": 0.02
+  },
+  "agentes": [
+    { "id": "regras", "nome": "Robô de regras (referência)", "provedor": "regras", "ativo": true },
+    { "id": "claude", "nome": "Claude", "provedor": "anthropic", "modelo": "claude-sonnet-5-5", "ativo": false,
+      "estilo": "Trader disciplinado: só opera com tendência clara e prefere ficar de fora a forçar entrada." },
+    { "id": "gpt", "nome": "GPT", "provedor": "openai", "modelo": "gpt-5", "ativo": false,
+      "estilo": "Segue a tendência maior e entra em recuos." },
+    { "id": "gemini", "nome": "Gemini", "provedor": "gemini", "modelo": "gemini-2.5-pro", "ativo": false,
+      "estilo": "Busca rompimentos com volume." },
+    { "id": "grok", "nome": "Grok", "provedor": "xai", "modelo": "grok-4", "ativo": false,
+      "estilo": "Opera reversões quando o preço está esticado." },
+    { "id": "deepseek", "nome": "DeepSeek", "provedor": "deepseek", "modelo": "deepseek-chat", "ativo": false,
+      "estilo": "Pensa em probabilidade e retorno: só entra quando o alvo compensa o stop." }
+  ]
+}

@@ -937,6 +937,7 @@ function bind(){
   $('bmLocal').addEventListener('click',function(){setBotMode('local')});
   $('tabHoje').addEventListener('click',function(){setView('hoje')});
   $('tabBot').addEventListener('click',function(){setView('bot')});
+  $('tabOffice').addEventListener('click',function(){setView('office')});
   $('tabManual').addEventListener('click',function(){setView('manual')});
   window.addEventListener('resize',drawChart);
   try{new ResizeObserver(drawChart).observe($('chart'))}catch(e){}
@@ -956,7 +957,7 @@ function onKey(e){
   if((tag==='INPUT'&&!/^(checkbox|radio|button|file)$/.test(tg.type))||tag==='SELECT'||tag==='TEXTAREA'||$('helpDlg').open)return;
   var k=e.key,ctrl=e.ctrlKey||e.metaKey;
   if(tag==='BUTTON'&&(k===' '||k==='Enter'))return;
-  if(S.view==='bot'&&k!=='?'&&k!=='t'&&k!=='T')return;
+  if((S.view==='bot'||S.view==='office')&&k!=='?'&&k!=='t'&&k!=='T')return;
   if(ctrl&&(k==='z'||k==='Z')){e.preventDefault();undo();return}
   if(ctrl||e.altKey)return;
   switch(k){
@@ -1428,14 +1429,16 @@ function setBotMode(m){
 
 function setView(v){
   S.view=v;document.body.setAttribute('data-view',v);
-  $('viewHoje').hidden=v!=='hoje';$('viewBot').hidden=v!=='bot';$('viewManual').hidden=v!=='manual';
+  $('viewHoje').hidden=v!=='hoje';$('viewBot').hidden=v!=='bot';$('viewManual').hidden=v!=='manual';$('viewOffice').hidden=v!=='office';
+  $('tabOffice').classList.toggle('on',v==='office');
+  if(v==='office')window.RadarOfficeUI.show();else window.RadarOfficeUI.hide();
   $('tabHoje').classList.toggle('on',v==='hoje');$('tabBot').classList.toggle('on',v==='bot');$('tabManual').classList.toggle('on',v==='manual');
   try{localStorage.setItem(VIEW_KEY,v)}catch(e){}
   if(v==='manual'){
     if(S.wantLive){S.wantLive=false;connectLive(S.liveSym,S.tf,true)}
     setTimeout(function(){if(S.ind)drawChart()},0);
     renderHeader();
-  }else{document.title='Radar de Futuros';if(v==='bot')renderBot();else renderHoje()}
+  }else{document.title='Radar de Futuros';if(v==='bot')renderBot();else if(v==='hoje')renderHoje()}
   syncRemoteTimer();syncHojeTimer();
 }
 
@@ -1459,7 +1462,7 @@ function init(){
   $('bmServer').classList.toggle('on',botMode==='server');$('bmLocal').classList.toggle('on',botMode==='local');
   $('bmNote').textContent='';
   loadHoje();
-  setView(view==='manual'?'manual':(view==='bot'?'bot':'hoje'));
+  setView(view==='manual'?'manual':(view==='bot'?'bot':(view==='office'?'office':'hoje')));
   if(L.running){startBotTimer();botTick()}
   D.fetchSymbols().then(function(list){if(list.length)$('symlist').innerHTML=list.map(function(s){return '<option value="'+s+'">'}).join('')}).catch(function(){});
   if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
