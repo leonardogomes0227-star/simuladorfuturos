@@ -599,3 +599,11 @@ body:not([data-view="manual"]) .tick,body:not([data-view="manual"]) .status{disp
 .of-say{margin:0 0 6px;font-size:13px}
 .of-use,.of-rules{font-size:11.5px}
 @media (max-width:600px){.of-board li{grid-template-columns:22px 1fr auto}.of-eqs{display:none}.of-kv{grid-template-columns:repeat(2,1fr)}}
+.of-stage{background:#1b1830;border-color:#2c2748;gap:8px}
+.of-stage h2{color:#a9a0cc;margin:0}
+.of-stage .note{color:#a9a0cc}
+.of-stage-bar{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.of-stage-wrap{overflow-x:auto}
+.of-stage-wrap canvas{margin:0 auto}
+#officeCanvas{display:block;max-width:100%;cursor:pointer}
+.of-card.flash{box-shadow:0 0 0 2px var(--accent)}

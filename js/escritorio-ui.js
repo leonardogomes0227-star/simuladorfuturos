@@ -1,7 +1,7 @@
 // Tela "Escritório": placar das IAs e a mesa de cada uma. Só lê o estado gravado pelo servidor (escritorio-estado).
 (function(){
 'use strict';
-var O=window.RadarOffice,timer=null,busy=false,box=null,last=null,err='';
+var O=window.RadarOffice,Scene=window.RadarOfficeScene,timer=null,busy=false,box=null,last=null,err='',mounted=false;
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function money(v){return (v<0?'−':'')+Math.abs(v).toFixed(2).replace('.',',')}
@@ -27,7 +27,7 @@ function actionLine(a){
 }
 function card(a,s,prices,meta){
   var b=BADGE[s.status]||BADGE.novo,open=O.openTrades(a),dec=a.decisions.length?a.decisions[a.decisions.length-1]:null;
-  var h='<article class="card of-card"><header class="of-head"><div><h3>'+esc(a.name)+'</h3><span class="note">'+esc(a.provider==='regras'?'Sem IA · regras fixas':a.provider+(a.model?' · '+a.model:''))+'</span></div><span class="of-badge '+b[0]+'">'+b[1]+'</span></header>';
+  var h='<article class="card of-card" id="of-'+esc(a.id)+'"><header class="of-head"><div><h3>'+esc(a.name)+'</h3><span class="note">'+esc(a.provider==='regras'?'Sem IA · regras fixas':a.provider+(a.model?' · '+a.model:''))+'</span></div><span class="of-badge '+b[0]+'">'+b[1]+'</span></header>';
   h+='<div class="of-eq"><span class="num big">'+money(s.equity)+'</span><span class="note">USDT</span><span class="num '+cls(s.pnl)+'">'+pct(s.pnlPct)+'</span></div>';
   h+=spark(a.curve,a.capital);
   h+='<dl class="of-kv"><div><dt>Hoje</dt><dd class="num '+cls(s.today)+'">'+signed(s.today)+'</dd></div><div><dt>Operações</dt><dd class="num">'+s.trades+'</dd></div><div><dt>Acerto</dt><dd class="num">'+(s.trades?s.winRate.toFixed(0)+'%':'–')+'</dd></div><div><dt>Maior queda</dt><dd class="num">'+(s.trades?s.maxDD.toFixed(1).replace('.',',')+'%':'–')+'</dd></div></dl>';
@@ -51,6 +51,7 @@ function card(a,s,prices,meta){
 function render(){
   if(!box)return;
   if(!last){
+    if(Scene)Scene.set([],{});
     box.innerHTML='<div class="card"><h2>Escritório de IAs</h2><p class="note">'+(err==='404'
       ?'O escritório ainda não rodou. Vá em <b>Actions → Escritório de IAs → Run workflow</b> no GitHub para a primeira rodada (veja <code>escritorio/LEIA-ME.md</code>).'
       :(err?'Não consegui carregar o escritório agora. Tentando de novo em instantes.':'Carregando…'))+'</p></div>';
@@ -58,6 +59,11 @@ function render(){
   }
   var st=O.sanitize(last.state),meta=last.meta||{},prices=meta.prices||{},now=Date.now();
   var lb=O.leaderboard(st,prices,now),ids=Object.keys(st.agents);
+  if(Scene)Scene.set(ids.map(function(id){
+    var a=st.agents[id],s=lb.filter(function(x){return x.id===id})[0],dec=a.decisions.length?a.decisions[a.decisions.length-1]:null;
+    return {id:id,name:a.name,status:s.status,pnlPct:s.pnlPct,open:s.open,
+      say:!dec?'Ainda não decidi nada.':(dec.erro?'Tive um problema: '+dec.erro:(dec.resumo||'Sem novidade por enquanto.'))};
+  }),prices);
   var h='<div class="of-top"><div><h2>Placar</h2><p class="note">Cada IA começou com '+(meta.cfg?money(meta.cfg.capital):'100,00')+' USDT. Dinheiro de mentira, preços reais da Binance.</p></div><span class="note">Atualizado '+ago(meta.lastRun||0)+'</span></div>';
   if(meta.configError)h+='<div class="warnbox">Configuração com erro: '+esc(meta.configError)+'</div>';
   if(meta.cfg&&meta.cfg.on===false)h+='<div class="warnbox">O escritório está desligado em <code>escritorio/config.json</code> ("ligado": false). As IAs não decidem; só as posições abertas são acompanhadas.</div>';
@@ -77,7 +83,18 @@ function load(){
     .catch(function(e){err=e.message==='404'?'404':'net'})
     .then(function(){busy=false;render()});
 }
-function show(){box=document.getElementById('officeBox');render();load();clearInterval(timer);timer=setInterval(function(){if(!document.hidden)load()},60000)}
-function hide(){clearInterval(timer);timer=null}
+function show(){
+  box=document.getElementById('officeBox');
+  if(Scene){
+    if(!mounted){
+      mounted=true;
+      Scene.mount(document.getElementById('officeCanvas'),function(id){var el=document.getElementById('of-'+id);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(function(){el.classList.remove('flash')},1200)}});
+      var b=document.getElementById('officeMeet');
+      b.addEventListener('click',function(){var on=Scene.toggleMeeting();b.setAttribute('aria-pressed',on);b.textContent=on?'Voltar às mesas':'Chamar reunião'});
+    }
+    Scene.start();
+  }
+  render();load();clearInterval(timer);timer=setInterval(function(){if(!document.hidden)load()},60000)}
+function hide(){clearInterval(timer);timer=null;if(Scene)Scene.stop()}
 window.RadarOfficeUI={show:show,hide:hide};
 })();
