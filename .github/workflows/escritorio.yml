@@ -1,0 +1,62 @@
+name: Escritório de IAs
+
+# Uma rodada a cada ~15 minutos: cada IA ativa recebe o mercado, propõe ordens e o gestor de risco (código) aprova ou recusa.
+# Tudo é simulação. O estado fica na branch "escritorio-estado" (um único commit, sempre reescrito) e o site só lê.
+# As chaves das IAs ficam nos Secrets do repositório (veja escritorio/LEIA-ME.md).
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: escritorio-ias
+  cancel-in-progress: false
+
+jobs:
+  rodar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Baixar o estado salvo
+        run: |
+          set -e
+          URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$URL" escritorio-estado >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch escritorio-estado "$URL" estado
+          else
+            git init -q estado
+            git -C estado checkout -q --orphan escritorio-estado
+            git -C estado remote add origin "$URL"
+          fi
+
+      - name: Rodar o escritório
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: node server/run-office.js escritorio/config.json estado/escritorio.json
+
+      - name: Guardar o estado
+        working-directory: estado
+        run: |
+          set -e
+          printf '{"git":{"deploymentEnabled":false},"ignoreCommand":"exit 0"}\n' > vercel.json
+          git config user.name "escritorio-ias"
+          git config user.email "escritorio-ias@users.noreply.github.com"
+          git add -A
+          if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            git commit -q --amend -m "estado do escritório"
+          else
+            git commit -q -m "estado do escritório"
+          fi
+          git push -q --force origin escritorio-estado
